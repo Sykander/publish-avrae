@@ -10,6 +10,30 @@ npm install --save publish-avrae
 
 ## Usage
 
+Add a file at the root of your project called `deploy.js`
+
+```js
+const { deploy } = require("publish-avrae");
+const sourceMap = require("./sourcemap.json");
+
+deploy(sourcemap)
+```
+
+Then add to your `package.json` `scripts` a script called deploy which you can then call to deploy your project:
+```jsonc
+{
+    // ...
+    "scripts": {
+        // ...
+        "deploy": "node deploy.js",
+        // ...
+    },
+    // ...
+}
+```
+
+You can call this script by running `npm run deploy`.
+
 ### Avrae Token
 
 Firstly, you'll need to set the environment variable `AVRAE_TOKEN`
@@ -104,4 +128,37 @@ using(
 )
 
 my_gvar.do_a_thing()
+```
+
+## Github Actions Integration
+
+You can use the following github workflow by adding it to your project
+
+```yaml
+name: Deploy
+
+on:
+  push:
+    branches: ["main"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        node-version: [22.x]
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: "npm"
+      - run: npm ci
+      - name: Deploy
+        run: npm run deploy
+        env:
+          AVRAE_TOKEN: ${{ secrets.AVRAE_TOKEN }}
 ```
