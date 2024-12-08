@@ -1,0 +1,31 @@
+{
+  "gvars": [
+    {
+      "name": "my_module",
+      "file": "src/gvars/my_module.gvar",
+      "id": "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA"
+    }
+  ],
+  "aliases": [
+    {
+      "name": "main_alias",
+      "file": "src/aliases/main_alias.alias",
+      "sub_aliases": [
+        {
+          "name": "sub_alias",
+          "file": "src/aliases/main_alias/sub_alias.alias"
+        }
+      ]
+    }
+  ],
+  "snippets": [
+    {
+      "name": "snippet_name",
+      "file": "src/snippets/snippet_name.snippet"
+    }
+  ],
+  "workshop": {
+    "environment": "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA",
+    "id": "aaaaaaaaaaaaaaaaaaaaaaaa"
+  }
+}
