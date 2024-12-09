@@ -16,7 +16,14 @@ Add a file at the root of your project called `deploy.js`
 const { deploy } = require("publish-avrae");
 const sourceMap = require("./sourcemap.json");
 
-deploy(sourcemap)
+console.log("Starting Deployment");
+deploy(sourceMap)
+  .then(() => console.log("Deployment Sucessful"))
+  .catch((e) => {
+    console.error(e);
+    console.log("Deployment Failed");
+    process.exit(1);
+  });
 ```
 
 Then add to your `package.json` `scripts` a script called deploy which you can then call to deploy your project:
