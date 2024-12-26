@@ -24,7 +24,7 @@ function hydrateSourceMap(sourceMap, workshop) {
 
     sourceMapAlias.id = workshopAlias._id;
 
-    sourceMapAlias.sub_aliases.forEach((sourceMapSubAlias) => {
+    Array.isArray(sourceMapAlias.sub_aliases) && sourceMapAlias.sub_aliases.forEach((sourceMapSubAlias) => {
       const workshopSubCommand = workshopAlias.subcommands.find(
         ({ name: subCommandName }) => subCommandName === sourceMapSubAlias.name,
       );
@@ -38,7 +38,7 @@ function hydrateSourceMap(sourceMap, workshop) {
       sourceMapSubAlias.id = workshopSubCommand._id;
     });
   });
-  sourceMap.snippets.forEach((sourceMapSnippet) => {
+  Array.isArray(sourceMap.snippets) && sourceMap.snippets.forEach((sourceMapSnippet) => {
     const workshopSnippet = workshop.snippets.find(
       ({ name: workshopSnippetName }) =>
         sourceMapSnippet.name === workshopSnippetName,
