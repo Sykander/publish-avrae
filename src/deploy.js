@@ -9,6 +9,24 @@ const { updateSnippet } = require("./avrae/update-snippet");
 const { updateGvar } = require("./avrae/update-gvar");
 const { getGvar } = require("./avrae/get-gvar");
 
+function hydrateSourceMapAlias(sourceMap, workshop, sourceMapAlias, workshopAlias) {
+  sourceMapAlias.id = workshopAlias._id;
+
+  Array.isArray(sourceMapAlias.sub_aliases) && sourceMapAlias.sub_aliases.forEach((sourceMapSubAlias) => {
+    const workshopSubCommand = workshopAlias.subcommands.find(
+      ({ name: subCommandName }) => subCommandName === sourceMapSubAlias.name,
+    );
+
+    if (!workshopSubCommand) {
+      throw new Error(
+        `Alias ${sourceMapAlias.name} sub alias ${sourceMapSubAlias.name} does not exist in the workshop.`,
+      );
+    }
+
+    hydrateSourceMapAlias(sourceMap, workshop, sourceMapSubAlias, workshopSubCommand)
+  });
+}
+
 function hydrateSourceMap(sourceMap, workshop) {
   sourceMap.aliases.forEach((sourceMapAlias) => {
     const workshopAlias = workshop.aliases.find(
@@ -22,21 +40,7 @@ function hydrateSourceMap(sourceMap, workshop) {
       );
     }
 
-    sourceMapAlias.id = workshopAlias._id;
-
-    Array.isArray(sourceMapAlias.sub_aliases) && sourceMapAlias.sub_aliases.forEach((sourceMapSubAlias) => {
-      const workshopSubCommand = workshopAlias.subcommands.find(
-        ({ name: subCommandName }) => subCommandName === sourceMapSubAlias.name,
-      );
-
-      if (!workshopSubCommand) {
-        throw new Error(
-          `Alias ${sourceMapAlias.name} sub alias ${sourceMapSubAlias.name} does not exist in the workshop.`,
-        );
-      }
-
-      sourceMapSubAlias.id = workshopSubCommand._id;
-    });
+    hydrateSourceMapAlias(sourceMap, workshop, sourceMapAlias, workshopAlias)
   });
   Array.isArray(sourceMap.snippets) && sourceMap.snippets.forEach((sourceMapSnippet) => {
     const workshopSnippet = workshop.snippets.find(
@@ -56,20 +60,24 @@ function hydrateSourceMap(sourceMap, workshop) {
   return { ...sourceMap };
 }
 
+function flatMapAliases(aliasesList) {
+  return [
+    ...aliasesList,
+    ...aliasesList.flatMap(
+      alias => flatMapAliases(alias.sub_aliases || [])
+    )
+  ]
+}
+
 async function deploy(sourceMap) {
   const tasks = [];
 
   if (sourceMap?.workshop?.id) {
     const workshop = await getWorkshop(sourceMap.workshop.id);
-    const hyrdratedSourceMap = hydrateSourceMap(sourceMap, workshop);
+    const hydratedSourceMap = hydrateSourceMap(sourceMap, workshop);
 
     tasks.push(
-      ...[
-        ...hyrdratedSourceMap.aliases,
-        ...hyrdratedSourceMap.aliases.flatMap(
-          (alias) => alias.sub_aliases || [],
-        ),
-      ].map(async (sourceMapAlias) => {
+      ...flatMapAliases(hydratedSourceMap.aliases).map(async (sourceMapAlias) => {
         const aliasVersions = await getAlias(sourceMapAlias.id);
         const aliasCurrentVersion =
           aliasVersions.find(({ is_current }) => is_current) ||
@@ -108,7 +116,7 @@ async function deploy(sourceMap) {
     );
 
     tasks.push(
-      ...hyrdratedSourceMap.snippets.map(async (sourceMapSnippet) => {
+      ...hydratedSourceMap.snippets.map(async (sourceMapSnippet) => {
         const snippetVersions = await getSnippet(sourceMapSnippet.id);
         const snippetCurrentVersion =
           snippetVersions.find(({ is_current }) => is_current) ||
