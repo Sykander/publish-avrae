@@ -109,7 +109,7 @@ async function deploy(sourceMap) {
             return;
           }
 
-          const newVersionNum = highestVersion + 1;
+          const newVersionNum = (Number.isFinite(highestVersion) ? highestVersion : 0) + 1;
 
           const newVersion = {
             ...aliasCurrentVersion,
@@ -148,7 +148,7 @@ async function deploy(sourceMap) {
           return;
         }
 
-        const newVersionNum = highestVersion + 1;
+        const newVersionNum = (Number.isFinite(highestVersion) ? highestVersion : 0) + 1;
         const newVersion = {
           ...snippetCurrentVersion,
           is_current: true,
