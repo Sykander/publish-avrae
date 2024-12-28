@@ -13,7 +13,13 @@
       "sub_aliases": [
         {
           "name": "sub_alias",
-          "file": "src/aliases/main_alias/sub_alias.alias"
+          "file": "src/aliases/main_alias/sub_alias.alias",
+          "sub_aliases": [
+            {
+              "name": "sub_sub_alias",
+              "file": "src/aliases/main_alias/sub_alias/sub_sub_alias.alias"
+            }
+          ]
         }
       ]
     }
