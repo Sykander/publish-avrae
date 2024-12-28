@@ -27,15 +27,16 @@ deploy(sourceMap)
 ```
 
 Then add to your `package.json` `scripts` a script called deploy which you can then call to deploy your project:
+
 ```jsonc
 {
+  // ...
+  "scripts": {
     // ...
-    "scripts": {
-        // ...
-        "deploy": "node deploy.js",
-        // ...
-    },
+    "deploy": "node deploy.js",
     // ...
+  },
+  // ...
 }
 ```
 

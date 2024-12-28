@@ -9,22 +9,33 @@ const { updateSnippet } = require("./avrae/update-snippet");
 const { updateGvar } = require("./avrae/update-gvar");
 const { getGvar } = require("./avrae/get-gvar");
 
-function hydrateSourceMapAlias(sourceMap, workshop, sourceMapAlias, workshopAlias) {
+function hydrateSourceMapAlias(
+  sourceMap,
+  workshop,
+  sourceMapAlias,
+  workshopAlias,
+) {
   sourceMapAlias.id = workshopAlias._id;
 
-  Array.isArray(sourceMapAlias.sub_aliases) && sourceMapAlias.sub_aliases.forEach((sourceMapSubAlias) => {
-    const workshopSubCommand = workshopAlias.subcommands.find(
-      ({ name: subCommandName }) => subCommandName === sourceMapSubAlias.name,
-    );
-
-    if (!workshopSubCommand) {
-      throw new Error(
-        `Alias ${sourceMapAlias.name} sub alias ${sourceMapSubAlias.name} does not exist in the workshop.`,
+  Array.isArray(sourceMapAlias.sub_aliases) &&
+    sourceMapAlias.sub_aliases.forEach((sourceMapSubAlias) => {
+      const workshopSubCommand = workshopAlias.subcommands.find(
+        ({ name: subCommandName }) => subCommandName === sourceMapSubAlias.name,
       );
-    }
 
-    hydrateSourceMapAlias(sourceMap, workshop, sourceMapSubAlias, workshopSubCommand)
-  });
+      if (!workshopSubCommand) {
+        throw new Error(
+          `Alias ${sourceMapAlias.name} sub alias ${sourceMapSubAlias.name} does not exist in the workshop.`,
+        );
+      }
+
+      hydrateSourceMapAlias(
+        sourceMap,
+        workshop,
+        sourceMapSubAlias,
+        workshopSubCommand,
+      );
+    });
 }
 
 function hydrateSourceMap(sourceMap, workshop) {
@@ -40,22 +51,23 @@ function hydrateSourceMap(sourceMap, workshop) {
       );
     }
 
-    hydrateSourceMapAlias(sourceMap, workshop, sourceMapAlias, workshopAlias)
+    hydrateSourceMapAlias(sourceMap, workshop, sourceMapAlias, workshopAlias);
   });
-  Array.isArray(sourceMap.snippets) && sourceMap.snippets.forEach((sourceMapSnippet) => {
-    const workshopSnippet = workshop.snippets.find(
-      ({ name: workshopSnippetName }) =>
-        sourceMapSnippet.name === workshopSnippetName,
-    );
-
-    if (!workshopSnippet) {
-      throw new Error(
-        `Snippet ${sourceMapSnippet.name} does not exist in the workshop.`,
+  Array.isArray(sourceMap.snippets) &&
+    sourceMap.snippets.forEach((sourceMapSnippet) => {
+      const workshopSnippet = workshop.snippets.find(
+        ({ name: workshopSnippetName }) =>
+          sourceMapSnippet.name === workshopSnippetName,
       );
-    }
 
-    sourceMapSnippet.id = workshopSnippet._id;
-  });
+      if (!workshopSnippet) {
+        throw new Error(
+          `Snippet ${sourceMapSnippet.name} does not exist in the workshop.`,
+        );
+      }
+
+      sourceMapSnippet.id = workshopSnippet._id;
+    });
 
   return { ...sourceMap };
 }
@@ -63,10 +75,8 @@ function hydrateSourceMap(sourceMap, workshop) {
 function flatMapAliases(aliasesList) {
   return [
     ...aliasesList,
-    ...aliasesList.flatMap(
-      alias => flatMapAliases(alias.sub_aliases || [])
-    )
-  ]
+    ...aliasesList.flatMap((alias) => flatMapAliases(alias.sub_aliases || [])),
+  ];
 }
 
 async function deploy(sourceMap) {
@@ -77,42 +87,44 @@ async function deploy(sourceMap) {
     const hydratedSourceMap = hydrateSourceMap(sourceMap, workshop);
 
     tasks.push(
-      ...flatMapAliases(hydratedSourceMap.aliases).map(async (sourceMapAlias) => {
-        const aliasVersions = await getAlias(sourceMapAlias.id);
-        const aliasCurrentVersion =
-          aliasVersions.find(({ is_current }) => is_current) ||
-          aliasVersions[0] ||
-          {};
-        const highestVersion =
-          Math.max(...aliasVersions.map(({ version }) => version)) || 0;
+      ...flatMapAliases(hydratedSourceMap.aliases).map(
+        async (sourceMapAlias) => {
+          const aliasVersions = await getAlias(sourceMapAlias.id);
+          const aliasCurrentVersion =
+            aliasVersions.find(({ is_current }) => is_current) ||
+            aliasVersions[0] ||
+            {};
+          const highestVersion =
+            Math.max(...aliasVersions.map(({ version }) => version)) || 0;
 
-        const rawContents = fs.readFileSync(sourceMapAlias.file).toString();
-        const newContents = sourceMap?.workshop?.environment
-          ? setEnvironmentId(rawContents, sourceMap.workshop.environment)
-          : rawContents;
+          const rawContents = fs.readFileSync(sourceMapAlias.file).toString();
+          const newContents = sourceMap?.workshop?.environment
+            ? setEnvironmentId(rawContents, sourceMap.workshop.environment)
+            : rawContents;
 
-        if (aliasCurrentVersion.content === newContents) {
-          console.log(
-            `${sourceMapAlias.name} alias wasn't updated as its unchanged.`,
+          if (aliasCurrentVersion.content === newContents) {
+            console.log(
+              `${sourceMapAlias.name} alias wasn't updated as its unchanged.`,
+            );
+            return;
+          }
+
+          const newVersionNum = highestVersion + 1;
+
+          const newVersion = {
+            ...aliasCurrentVersion,
+            is_current: true,
+            content: newContents,
+            version: newVersionNum,
+          };
+
+          return updateAlias(sourceMapAlias.id, newVersion).then(() =>
+            console.log(
+              `${sourceMapAlias.name} alias was updated to version ${newVersionNum}`,
+            ),
           );
-          return;
-        }
-
-        const newVersionNum = highestVersion + 1;
-
-        const newVersion = {
-          ...aliasCurrentVersion,
-          is_current: true,
-          content: newContents,
-          version: newVersionNum,
-        };
-
-        return updateAlias(sourceMapAlias.id, newVersion).then(() =>
-          console.log(
-            `${sourceMapAlias.name} alias was updated to version ${newVersionNum}`,
-          ),
-        );
-      }),
+        },
+      ),
     );
 
     tasks.push(
