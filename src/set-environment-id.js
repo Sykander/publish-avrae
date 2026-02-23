@@ -10,7 +10,7 @@ function setEnvironmentId(content, environmentId) {
 
   const environmentIdToReplace = regResult.groups.environment_id;
 
-  return content.replace(environmentIdToReplace, environmentId);
+  return content.replaceAll(environmentIdToReplace, environmentId);
 }
 
 module.exports = { setEnvironmentId };
