@@ -86,6 +86,14 @@ async function deploy(sourceMap) {
     const workshop = await getWorkshop(sourceMap.workshop.id);
     const hydratedSourceMap = hydrateSourceMap(sourceMap, workshop);
 
+    
+    if (sourceMap?.workshop?.environment) {
+      console.log(`Updating Environment ID ${sourceMap?.workshop?.environment}`)
+    } else {
+      console.log(`Not changing Environment ID`)
+    }
+
+
     tasks.push(
       ...flatMapAliases(hydratedSourceMap.aliases).map(
         async (sourceMapAlias) => {
@@ -98,6 +106,7 @@ async function deploy(sourceMap) {
             Math.max(...aliasVersions.map(({ version }) => version)) || 0;
 
           const rawContents = fs.readFileSync(sourceMapAlias.file).toString();
+
           const newContents = sourceMap?.workshop?.environment
             ? setEnvironmentId(rawContents, sourceMap.workshop.environment)
             : rawContents;
