@@ -1,5 +1,5 @@
 const environmentRegex =
-  /using\(.*env\s*=\s*"(?<environment_id>[\w\-]+)".*\)/gi;
+  /using\(.*env\s*=\s*["'](?<environment_id>[\w\-]+)["'].*\)/i;
 
 function setEnvironmentId(content, environmentId) {
   const regResult = environmentRegex.exec(content);
