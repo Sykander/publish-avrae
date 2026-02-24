@@ -93,7 +93,6 @@ async function deploy(sourceMap) {
       console.log(`Not changing Environment ID`)
     }
 
-
     tasks.push(
       ...flatMapAliases(hydratedSourceMap.aliases).map(
         async (sourceMapAlias) => {
