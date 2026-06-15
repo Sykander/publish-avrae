@@ -2,12 +2,25 @@
 
 ## Summary
 
-This next release is collecting npm publish polish after 1.1.3.
+Nothing yet.
+
+## Changes
+
+- Nothing yet.
+
+# 1.1.4
+
+## Summary
+
+This patch release collects npm publish polish after 1.1.3 and records the
+package version bump for release.
 
 ## Changes
 
 - Added explicit npm publish ignore list
 - Normalized repository URL for npm publish
+- Refreshed package lock version
+- Bumped package version to 1.1.4
 
 # 1.1.3
 
