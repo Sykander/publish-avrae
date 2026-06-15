@@ -1,4 +1,4 @@
-const { get } = require('axios');
+const { get } = require('./http-client');
 const { getHeaders } = require('./headers');
 
 async function getGvar(id) {

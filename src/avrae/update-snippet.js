@@ -1,4 +1,4 @@
-const { post, put } = require('axios');
+const { post, put } = require('./http-client');
 const { getHeaders } = require('./headers');
 
 async function updateSnippet(id, content) {

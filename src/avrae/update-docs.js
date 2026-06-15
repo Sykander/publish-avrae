@@ -1,4 +1,4 @@
-const { patch } = require('axios');
+const { patch } = require('./http-client');
 
 const { getHeaders } = require('./headers');
 const { responseData } = require('./response-data');

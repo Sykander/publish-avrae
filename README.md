@@ -10,45 +10,24 @@ npm install --save publish-avrae
 
 ## Usage
 
-You can use the CLI directly:
+Use the CLI directly, or call it from package scripts:
 
 ```sh
 publish-avrae deploy --sourcemap sourcemap.json
 ```
 
-The package still exports `deploy` for script-based usage:
-
-Add a file at the root of your project called `deploy.js`
-
-```js
-const { deploy } = require('publish-avrae');
-const sourceMap = require('./sourcemap.json');
-
-console.log('Starting deployment');
-deploy(sourceMap)
-  .then(() => console.log('Deployment successful'))
-  .catch((error) => {
-    console.error(error);
-    console.log('Deployment failed');
-    process.exit(1);
-  });
-```
-
-Then add to your `package.json` `scripts` a script called deploy which you can then call to deploy your project:
+The recommended setup is to add a `deploy` script that runs the `publish-avrae deploy` binary command. For projects with multiple environments, add a config test script that checks each sourcemap and compares them before deploy:
 
 ```jsonc
 {
-  // ...
   "scripts": {
-    // ...
-    "deploy": "node deploy.js",
-    // ...
+    "deploy": "publish-avrae deploy --sourcemap sourcemap.prod.json",
+    "test:config": "publish-avrae check-config --sourcemap sourcemap.dev.json && publish-avrae check-config --sourcemap sourcemap.prod.json && publish-avrae compare-config sourcemap.dev.json sourcemap.prod.json",
   },
-  // ...
 }
 ```
 
-You can call this script by running `npm run deploy`.
+You can call these with `npm run deploy` and `npm run test:config`. If your project does not already have a test script, you can name the config script `test`.
 
 ### CLI Commands
 
