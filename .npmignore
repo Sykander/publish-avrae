@@ -1,0 +1,6 @@
+node_modules/
+test/
+.github/
+.gitignore
+.prettierrc.json
+DEVELOPMENT.md

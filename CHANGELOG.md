@@ -1,10 +1,21 @@
+# Unreleased
+
+## Summary
+
+This next release is collecting npm publish polish after 1.1.3.
+
+## Changes
+
+- Added explicit npm publish ignore list
+- Normalized repository URL for npm publish
+
 # 1.1.3
 
 ## Summary
 
-This in-progress release makes sourcemap docs docfile-only, ensures docfile-only
-changes deploy even when code is unchanged, and adds a CLI command for generating
-env gvar files from sourcemaps.
+This release makes sourcemap docs docfile-only, ensures docfile-only changes
+deploy even when code is unchanged, and adds a CLI command for generating env
+gvar files from sourcemaps.
 
 ## Changes
 
