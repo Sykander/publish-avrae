@@ -16,7 +16,8 @@ It has three checks before publishing:
    version on npm.
 
 If the local version is higher than the latest published version, CI runs
-`npm publish` and sends the package to the npm registry. If the local version is
+`npm publish`, sends the package to the npm registry, and tags the published
+commit with the exact package version, such as `2.7.3`. If the local version is
 equal to the published version, the version check succeeds and the publish job is
 skipped. If the local version is lower than the published version, the version
 check fails and the publish job is skipped.
@@ -76,9 +77,12 @@ The publish job grants GitHub's OIDC token permission with:
 
 ```yaml
 permissions:
-  contents: read
+  contents: write
   id-token: write
 ```
+
+`contents: write` lets the publish job create the version tag after `npm publish`
+succeeds.
 
 Do not add `NPM_TOKEN` back to the workflow unless Trusted Publishing is removed
 from the npm package settings.
@@ -103,6 +107,15 @@ npm version major --no-git-tag-version
 ```
 
 Choose exactly one of those commands.
+
+Update `CHANGELOG.md` in the same change as the version bump. Add the newest
+version at the top using a `# VERSION` heading, then include `## Summary` and
+`## Changes` sections. The summary should describe the release in human terms;
+the changes list should use short, high-level technical bullets of three to ten
+words each.
+
+New successful publishes are tagged automatically by GitHub Actions with the
+exact package version, such as `2.7.3`.
 
 Patch versions are for small, backwards-compatible changes. This changes only
 the rightmost number:

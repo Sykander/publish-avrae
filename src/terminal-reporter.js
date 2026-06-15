@@ -7,11 +7,15 @@ const STATUS_PREFIX = {
   skipped: '[-]',
   failed: '[err]',
 };
+const DEFAULT_TERMINAL_COLUMNS = 80;
+const DEFAULT_TERMINAL_ROWS = 24;
 
 class TerminalReporter {
   constructor(options = {}) {
     this.stream = options.stream || process.stdout;
     this.enabled = options.enabled ?? Boolean(this.stream.isTTY);
+    this.maxColumns = options.maxColumns;
+    this.maxLines = options.maxLines;
     this.tasks = [];
     this.renderedLines = 0;
   }
@@ -46,11 +50,11 @@ class TerminalReporter {
 
   finish() {
     if (this.enabled) {
-      this.render();
+      this.render({ final: true });
     }
   }
 
-  render() {
+  render(options = {}) {
     if (!this.enabled || !this.tasks.length) {
       return;
     }
@@ -61,9 +65,134 @@ class TerminalReporter {
       readline.clearScreenDown(this.stream);
     }
 
-    const output = this.tasks.map((task) => this.formatTask(task)).join('\n');
+    const lines = this.renderLines(options);
+    const output = lines.join('\n');
     this.stream.write(`${output}\n`);
-    this.renderedLines = this.tasks.length;
+    this.renderedLines = lines.length;
+  }
+
+  renderLines(options = {}) {
+    const lines = this.tasks.map((task) => this.formatTask(task));
+
+    if (options.final) {
+      return lines;
+    }
+
+    const maxLines = this.maxRenderLines();
+
+    if (lines.length <= maxLines) {
+      return this.fitLines(lines);
+    }
+
+    return this.fitLines(this.windowedLines(maxLines));
+  }
+
+  maxRenderLines() {
+    const configured =
+      this.maxLines ?? this.stream.rows ?? Number(process.env.LINES);
+
+    if (!Number.isFinite(configured) || configured <= 0) {
+      return DEFAULT_TERMINAL_ROWS - 1;
+    }
+
+    return Math.max(1, Math.floor(configured) - 1);
+  }
+
+  maxRenderColumns() {
+    const configured =
+      this.maxColumns ?? this.stream.columns ?? Number(process.env.COLUMNS);
+
+    if (!Number.isFinite(configured) || configured <= 0) {
+      return DEFAULT_TERMINAL_COLUMNS;
+    }
+
+    return Math.max(1, Math.floor(configured));
+  }
+
+  fitLines(lines) {
+    const maxColumns = this.maxRenderColumns();
+
+    if (!Number.isFinite(maxColumns)) {
+      return lines;
+    }
+
+    return lines.map((line) => this.fitLine(line, maxColumns));
+  }
+
+  fitLine(line, maxColumns) {
+    if (line.length <= maxColumns) {
+      return line;
+    }
+
+    if (maxColumns <= 3) {
+      return '.'.repeat(maxColumns);
+    }
+
+    return `${line.slice(0, maxColumns - 3)}...`;
+  }
+
+  windowedLines(maxLines) {
+    if (maxLines <= 1) {
+      return [this.formatSummary()];
+    }
+
+    if (maxLines === 2) {
+      return [this.formatSummary(), `... ${this.tasks.length} tasks total`];
+    }
+
+    const taskCapacity = maxLines - 2;
+    const focusIndex = this.focusIndex(taskCapacity);
+    const start = Math.min(
+      Math.max(0, focusIndex - Math.floor(taskCapacity / 3)),
+      Math.max(0, this.tasks.length - taskCapacity),
+    );
+    const end = Math.min(this.tasks.length, start + taskCapacity);
+
+    return [
+      this.formatSummary(),
+      ...this.tasks.slice(start, end).map((task) => this.formatTask(task)),
+      `... showing ${start + 1}-${end} of ${this.tasks.length} tasks`,
+    ];
+  }
+
+  focusIndex(taskCapacity) {
+    for (const status of ['failed', 'running', 'pending']) {
+      const index = this.tasks.findIndex((task) => task.status === status);
+
+      if (index !== -1) {
+        return index;
+      }
+    }
+
+    return Math.max(0, this.tasks.length - taskCapacity);
+  }
+
+  formatSummary() {
+    const counts = this.tasks.reduce(
+      (result, task) => ({
+        ...result,
+        [task.status]: (result[task.status] || 0) + 1,
+      }),
+      {},
+    );
+    const complete = (counts.done || 0) + (counts.skipped || 0);
+    const parts = [`${complete}/${this.tasks.length} complete`];
+
+    for (const status of ['running', 'pending', 'failed']) {
+      if (counts[status]) {
+        parts.push(`${counts[status]} ${status}`);
+      }
+    }
+
+    const prefix = counts.failed
+      ? STATUS_PREFIX.failed
+      : counts.running
+        ? STATUS_PREFIX.running
+        : complete === this.tasks.length
+          ? STATUS_PREFIX.done
+          : STATUS_PREFIX.pending;
+
+    return `${prefix} ${parts.join(', ')}`;
   }
 
   formatTask(task) {

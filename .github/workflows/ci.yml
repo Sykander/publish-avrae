@@ -47,6 +47,7 @@ jobs:
   version:
     runs-on: ubuntu-latest
     outputs:
+      package_version: ${{ steps.version-check.outputs.package_version }}
       should_publish: ${{ steps.version-check.outputs.should_publish }}
 
     steps:
@@ -70,11 +71,17 @@ jobs:
           const localVersion = packageJson.version;
           const githubOutput = process.env.GITHUB_OUTPUT;
 
-          function setShouldPublish(value) {
+          function setOutput(name, value) {
             if (githubOutput) {
-              appendFileSync(githubOutput, `should_publish=${value}\n`);
+              appendFileSync(githubOutput, `${name}=${value}\n`);
             }
           }
+
+          function setShouldPublish(value) {
+            setOutput('should_publish', value);
+          }
+
+          setOutput('package_version', localVersion);
 
           function parseVersion(version) {
             const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
@@ -166,7 +173,7 @@ jobs:
       - test
       - version
     permissions:
-      contents: read
+      contents: write
       id-token: write
 
     steps:
@@ -193,3 +200,17 @@ jobs:
 
       - name: Publish package
         run: npm publish
+
+      - name: Tag published version
+        env:
+          PACKAGE_VERSION: ${{ needs.version.outputs.package_version }}
+        run: |
+          if git ls-remote --exit-code --tags origin "refs/tags/${PACKAGE_VERSION}" >/dev/null 2>&1; then
+            echo "::error::Tag ${PACKAGE_VERSION} already exists."
+            exit 1
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "${PACKAGE_VERSION}" "${GITHUB_SHA}"
+          git push origin "refs/tags/${PACKAGE_VERSION}"

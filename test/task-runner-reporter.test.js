@@ -205,8 +205,66 @@ test('TerminalReporter renders and rerenders interactive output', () => {
   assert.equal(reporter.renderedLines, 1);
   assert.ok(writes.includes('[ ] Task\n'));
   assert.ok(writes.includes('[ ] Task\n'));
+  assert.ok(writes.includes('\u001b[1A'));
+  assert.ok(writes.includes('\u001b[1G'));
+  assert.ok(writes.includes('\u001b[0J'));
   assert.equal(
     reporter.formatTask({ label: 'Other', status: 'failed' }),
     '[err] Other',
   );
+});
+
+test('TerminalReporter keeps live output inside the terminal viewport', () => {
+  const writes = [];
+  const stream = {
+    columns: 80,
+    isTTY: true,
+    rows: 5,
+    write(chunk) {
+      writes.push(chunk);
+    },
+  };
+  const reporter = new TerminalReporter({ stream });
+  const tasks = Array.from({ length: 8 }, (_, index) => ({
+    id: `task-${index}`,
+    label: `Task ${index}`,
+  }));
+
+  reporter.start(tasks);
+  reporter.update('task-0', { status: 'running' });
+
+  const progressWrites = writes.filter((chunk) => chunk.includes('showing'));
+  const latestProgress = progressWrites.at(-1);
+
+  assert.equal(reporter.renderedLines, 4);
+  assert.equal(latestProgress.split('\n').filter(Boolean).length, 4);
+  assert.match(latestProgress, /\[>\] 0\/8 complete, 1 running, 7 pending/);
+  assert.ok(writes.includes('\u001b[4A'));
+
+  reporter.finish();
+
+  assert.equal(reporter.renderedLines, 8);
+  assert.equal(writes.at(-1).split('\n').filter(Boolean).length, 8);
+});
+
+test('TerminalReporter truncates live lines that would wrap', () => {
+  const writes = [];
+  const stream = {
+    columns: 16,
+    isTTY: true,
+    rows: 10,
+    write(chunk) {
+      writes.push(chunk);
+    },
+  };
+  const reporter = new TerminalReporter({ stream });
+
+  reporter.start([
+    {
+      id: 'task',
+      label: 'This task label is too wide',
+    },
+  ]);
+
+  assert.deepEqual(writes, ['[ ] This task...\n']);
 });
