@@ -32,6 +32,7 @@ test('checkSourceMap reports structural, duplicate, and id errors', () => {
           sub_aliases: [
             { name: 'child', file: 'missing-child.alias' },
             { name: 'child', file: 'child.alias' },
+            { file: 'child.alias' },
           ],
         },
         { name: 'dup', file: 'missing.alias' },
@@ -39,6 +40,7 @@ test('checkSourceMap reports structural, duplicate, and id errors', () => {
       ],
       snippets: [
         { name: 'missing-file' },
+        { file: 'snippet.snippet' },
         { name: 'snippet', file: 'snippet.snippet' },
         { name: 'snippet', file: 'snippet.snippet' },
       ],
@@ -63,7 +65,9 @@ test('checkSourceMap reports structural, duplicate, and id errors', () => {
   assert.match(errors, /Alias "unknown" references missing file missing\.md/);
   assert.match(errors, /Alias "dup" duplicates name "dup"/);
   assert.match(errors, /Subalias under "unknown" "child" duplicates name/);
+  assert.match(errors, /Subalias "unknown unknown" is missing name/);
   assert.match(errors, /missing-child\.alias/);
+  assert.match(errors, /Snippet "unknown" is missing name/);
   assert.match(errors, /Snippet "missing-file" is missing file/);
   assert.match(errors, /Snippet "snippet" duplicates name "snippet"/);
   assert.match(errors, /Gvar "unknown" is missing name/);
@@ -236,6 +240,28 @@ test('compareSourceMaps reports workshop presence mismatches and prefixed valida
     /left and right must either both set workshop\.environment/,
   );
   assert.match(errors, /right is missing Alias "broken"/);
+});
+
+test('compareSourceMaps reports target validation errors', () => {
+  const baseDir = makeTempDir();
+
+  const result = compareSourceMaps(
+    {},
+    {
+      aliases: [{ name: 'broken', file: 'missing.alias' }],
+    },
+    {
+      sourceBaseDir: baseDir,
+      sourceLabel: 'left',
+      targetBaseDir: baseDir,
+      targetLabel: 'right',
+    },
+  );
+
+  assert.match(
+    result.errors.join('\n'),
+    /right: Alias "broken" references missing file/,
+  );
 });
 
 test('labelForPath removes only the final extension', () => {

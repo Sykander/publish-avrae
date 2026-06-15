@@ -263,6 +263,71 @@ test('deploy skips unchanged workshop assets', async () => {
   }
 });
 
+test('deploy uses fallback versions and can clear docs', async () => {
+  const baseDir = makeTempDir();
+  writeFiles(baseDir, { 'alias.alias': 'new alias' });
+  const calls = [];
+  const loaded = freshRequire(srcPath('deploy.js'), {
+    [srcPath('workshop-assets.js')]: {
+      async hydrateWorkshopAssets(sourceMap) {
+        return sourceMap;
+      },
+    },
+    [srcPath('avrae/get-alias.js')]: {
+      async getAlias() {
+        return [{ content: 'old alias', is_current: true }];
+      },
+    },
+    [srcPath('avrae/update-alias.js')]: {
+      async updateAlias(id, payload) {
+        calls.push(['updateAlias', id, payload]);
+      },
+    },
+    [srcPath('avrae/update-docs.js')]: {
+      async updateDocs(type, id, payload) {
+        calls.push(['updateDocs', type, id, payload]);
+      },
+    },
+  });
+
+  try {
+    const results = await loaded.module.deploy(
+      {
+        workshop: { id: 'workshop-id' },
+        aliases: [
+          {
+            name: 'alias',
+            id: 'alias-id',
+            file: 'alias.alias',
+            docs: '',
+            _workshopAsset: { docs: 'old docs' },
+          },
+        ],
+      },
+      { baseDir },
+    );
+
+    assert.deepEqual(results, [
+      { status: 'done', message: 'code v1, docs updated' },
+    ]);
+  } finally {
+    loaded.restore();
+  }
+
+  assert.deepEqual(calls, [
+    [
+      'updateAlias',
+      'alias-id',
+      {
+        content: 'new alias',
+        is_current: true,
+        version: 1,
+      },
+    ],
+    ['updateDocs', 'alias', 'alias-id', { name: 'alias', docs: '' }],
+  ]);
+});
+
 test('deploy fails gvar tasks that do not have ids', async () => {
   const baseDir = makeTempDir();
   writeFiles(baseDir, { 'gvar.gvar': 'value' });

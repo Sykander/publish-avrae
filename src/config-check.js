@@ -275,6 +275,12 @@ function compareNamedEntries(
   }
 }
 
+function pushPrefixedMessages(target, messages, label) {
+  for (const message of messages) {
+    target.push(`${label}: ${message}`);
+  }
+}
+
 function compareSourceMaps(sourceMap, targetSourceMap, options = {}) {
   const {
     sourceLabel = 'source',
@@ -288,14 +294,10 @@ function compareSourceMaps(sourceMap, targetSourceMap, options = {}) {
   const sourceCheck = checkSourceMap(source, { baseDir: sourceBaseDir });
   const targetCheck = checkSourceMap(target, { baseDir: targetBaseDir });
 
-  result.errors.push(
-    ...sourceCheck.errors.map((error) => `${sourceLabel}: ${error}`),
-    ...targetCheck.errors.map((error) => `${targetLabel}: ${error}`),
-  );
-  result.warnings.push(
-    ...sourceCheck.warnings.map((warning) => `${sourceLabel}: ${warning}`),
-    ...targetCheck.warnings.map((warning) => `${targetLabel}: ${warning}`),
-  );
+  pushPrefixedMessages(result.errors, sourceCheck.errors, sourceLabel);
+  pushPrefixedMessages(result.errors, targetCheck.errors, targetLabel);
+  pushPrefixedMessages(result.warnings, sourceCheck.warnings, sourceLabel);
+  pushPrefixedMessages(result.warnings, targetCheck.warnings, targetLabel);
 
   if (
     source.workshop?.id &&

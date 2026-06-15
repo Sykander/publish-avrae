@@ -15,6 +15,10 @@ It has three checks before publishing:
 3. A package version check that compares `package.json` to the latest published
    version on npm.
 
+`npm test` runs Node's built-in test runner with coverage enabled and enforces
+100% line, branch, and function coverage. New behavior should include focused
+tests for both success and failure paths before the version is bumped.
+
 If the local version is higher than the latest published version, CI runs
 `npm publish`, sends the package to the npm registry, and tags the published
 commit with the exact package version, such as `2.7.3`. If the local version is

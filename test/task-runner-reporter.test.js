@@ -90,6 +90,39 @@ test('runTasks aggregates failures after all tasks settle', async () => {
   assert.equal(reporter.events.at(-1)[0], 'finish');
 });
 
+test('runTasks covers optional reporting and plural failures', async () => {
+  await assert.rejects(
+    runTasks([
+      {
+        id: 'empty',
+        label: 'Empty',
+        async run() {
+          return undefined;
+        },
+      },
+      {
+        id: 'bad-one',
+        label: 'Bad one',
+        async run() {
+          throw new Error('bad one');
+        },
+      },
+      {
+        id: 'bad-two',
+        label: 'Bad two',
+        async run() {
+          throw new Error('bad two');
+        },
+      },
+    ]),
+    (error) => {
+      assert.equal(error.message, '2 tasks failed.');
+      assert.equal(error.failures.length, 2);
+      return true;
+    },
+  );
+});
+
 test('runTasksInOrder continues through failures and pluralizes errors', async () => {
   const reporter = makeReporter();
   const calls = [];
@@ -125,6 +158,32 @@ test('runTasksInOrder continues through failures and pluralizes errors', async (
 
   assert.deepEqual(calls, ['first', 'second']);
   assert.equal(reporter.events.at(-1)[0], 'finish');
+});
+
+test('runTasksInOrder covers optional reporting and default results', async () => {
+  await assert.rejects(
+    runTasksInOrder([
+      {
+        id: 'empty',
+        label: 'Empty',
+        async run() {
+          return undefined;
+        },
+      },
+      {
+        id: 'bad',
+        label: 'Bad',
+        async run() {
+          throw new Error('bad');
+        },
+      },
+    ]),
+    (error) => {
+      assert.equal(error.message, '1 task failed.');
+      assert.equal(error.failures.length, 1);
+      return true;
+    },
+  );
 });
 
 test('runTasksInOrder returns ordered results for successful tasks', async () => {
@@ -185,6 +244,38 @@ test('TerminalReporter writes simple lines when progress rendering is disabled',
   reporter.finish();
 
   assert.deepEqual(writes, ['[ok] Task - complete\n']);
+});
+
+test('TerminalReporter writes one final snapshot without an interactive stream', () => {
+  const writes = [];
+  const reporter = new TerminalReporter({
+    enabled: true,
+    stream: {
+      write(chunk) {
+        writes.push(chunk);
+      },
+    },
+  });
+
+  reporter.start([
+    { id: 'gvar:env', label: 'gvar env' },
+    { id: 'gvar:config', label: 'gvar config' },
+  ]);
+  reporter.update('gvar:env', { status: 'running' });
+  reporter.update('gvar:env', { status: 'done', message: 'updated' });
+  reporter.update('gvar:config', {
+    status: 'skipped',
+    message: 'unchanged',
+  });
+
+  assert.equal(reporter.enabled, false);
+  assert.deepEqual(writes, []);
+
+  reporter.finish();
+
+  assert.deepEqual(writes, [
+    '[ok] gvar env - updated\n[-] gvar config - unchanged\n',
+  ]);
 });
 
 test('TerminalReporter renders and rerenders interactive output', () => {
@@ -267,4 +358,42 @@ test('TerminalReporter truncates live lines that would wrap', () => {
   ]);
 
   assert.deepEqual(writes, ['[ ] This task...\n']);
+});
+
+test('TerminalReporter covers compact summary and formatting branches', () => {
+  const reporter = new TerminalReporter({
+    enabled: false,
+    stream: {
+      write() {},
+    },
+  });
+
+  assert.equal(new TerminalReporter().stream, process.stdout);
+
+  reporter.maxRenderColumns = () => Infinity;
+  assert.deepEqual(reporter.fitLines(['wide line']), ['wide line']);
+  assert.equal(reporter.fitLine('wide line', 3), '...');
+
+  reporter.tasks = [
+    { id: 'done', label: 'Done', status: 'done', message: '' },
+    { id: 'skipped', label: 'Skipped', status: 'skipped', message: '' },
+    { id: 'other', label: 'Other', status: 'done', message: '' },
+  ];
+
+  assert.deepEqual(reporter.windowedLines(1), ['[ok] 3/3 complete']);
+  assert.deepEqual(reporter.windowedLines(2), [
+    '[ok] 3/3 complete',
+    '... 3 tasks total',
+  ]);
+  assert.equal(reporter.focusIndex(1), 2);
+
+  reporter.tasks = [
+    { id: 'failed', label: 'Failed', status: 'failed', message: '' },
+  ];
+  assert.equal(reporter.formatSummary(), '[err] 0/1 complete, 1 failed');
+
+  reporter.tasks = [
+    { id: 'pending', label: 'Pending', status: 'pending', message: '' },
+  ];
+  assert.equal(reporter.formatSummary(), '[ ] 0/1 complete, 1 pending');
 });

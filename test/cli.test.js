@@ -39,6 +39,7 @@ async function runCliEntrypoint(args, mocks = {}) {
   const originalArgv = process.argv;
   const originalExitCode = process.exitCode;
   const originalMain = require.main;
+  const originalMainModule = process.mainModule;
   const originals = new Map();
 
   cliModule.filename = filename;
@@ -46,6 +47,7 @@ async function runCliEntrypoint(args, mocks = {}) {
   process.argv = ['node', filename, ...args];
   process.exitCode = undefined;
   require.main = cliModule;
+  process.mainModule = cliModule;
 
   for (const [request, exports] of Object.entries(mocks)) {
     const resolved = require.resolve(request);
@@ -59,9 +61,7 @@ async function runCliEntrypoint(args, mocks = {}) {
   }
 
   try {
-    const source = fs
-      .readFileSync(filename, 'utf8')
-      .replace('if (require.main === module)', 'if (true)');
+    const source = fs.readFileSync(filename, 'utf8');
     cliModule._compile(source, filename);
     await new Promise((resolve) => setImmediate(resolve));
     return process.exitCode;
@@ -69,6 +69,7 @@ async function runCliEntrypoint(args, mocks = {}) {
     process.argv = originalArgv;
     process.exitCode = originalExitCode;
     require.main = originalMain;
+    process.mainModule = originalMainModule;
 
     for (const [resolved, original] of originals) {
       if (original) {
@@ -360,6 +361,49 @@ test('main create-workshop creates workshops and can persist the id', async () =
   }
 });
 
+test('main create-workshop accepts sourcemap option aliases', async () => {
+  const baseDir = makeTempDir();
+  const sourceMapPath = writeSourceMap(baseDir, 'source-map.json', {});
+  const shortPath = writeSourceMap(baseDir, 'short.json', {});
+  let count = 0;
+  const loaded = freshRequire(srcPath('cli.js'), {
+    [srcPath('avrae/create-workshop.js')]: {
+      async createWorkshop() {
+        count += 1;
+        return { id: `workshop-${count}` };
+      },
+    },
+  });
+
+  try {
+    await loaded.module.main([
+      'create-workshop',
+      '--name',
+      'Source map',
+      '--source-map',
+      sourceMapPath,
+    ]);
+    await loaded.module.main([
+      'create-workshop',
+      '--name',
+      'Short',
+      '-s',
+      shortPath,
+    ]);
+
+    assert.equal(
+      JSON.parse(fs.readFileSync(sourceMapPath, 'utf8')).workshop.id,
+      'workshop-1',
+    );
+    assert.equal(
+      JSON.parse(fs.readFileSync(shortPath, 'utf8')).workshop.id,
+      'workshop-2',
+    );
+  } finally {
+    loaded.restore();
+  }
+});
+
 test('main create-workshop validates name and returned id', async () => {
   const missingId = freshRequire(srcPath('cli.js'), {
     [srcPath('avrae/create-workshop.js')]: {
@@ -381,6 +425,22 @@ test('main create-workshop validates name and returned id', async () => {
   } finally {
     missingId.restore();
   }
+});
+
+test('the CLI entrypoint suppresses config errors', async () => {
+  const baseDir = makeTempDir();
+  const sourceMapPath = writeSourceMap(baseDir, 'bad.json', {
+    aliases: [{ name: 'missing', file: 'missing.alias' }],
+  });
+
+  const { lines, result } = await withCwd(baseDir, () =>
+    captureConsole('error', () =>
+      runCliEntrypoint(['check-config', '--sourcemap', sourceMapPath]),
+    ),
+  );
+
+  assert.equal(result, 1);
+  assert.deepEqual(lines, []);
 });
 
 test('the CLI entrypoint reports non-config errors and task failures', async () => {
@@ -406,4 +466,27 @@ test('the CLI entrypoint reports non-config errors and task failures', async () 
 
   assert.equal(result, 1);
   assert.deepEqual(lines, ['[err] Deploy failed', '[err] Inner failure']);
+});
+
+test('the CLI entrypoint reports errors without task failures', async () => {
+  const baseDir = makeTempDir();
+  writeFiles(baseDir, { 'data.gvar': 'data' });
+  const sourceMapPath = writeSourceMap(baseDir, 'sourcemap.json', {
+    gvars: [{ name: 'data', file: 'data.gvar', id: UUID_ONE }],
+  });
+
+  const { lines, result } = await withCwd(baseDir, () =>
+    captureConsole('error', () =>
+      runCliEntrypoint(['deploy', '--sourcemap', sourceMapPath], {
+        [srcPath('deploy.js')]: {
+          async deploy() {
+            throw new Error('Deploy failed');
+          },
+        },
+      }),
+    ),
+  );
+
+  assert.equal(result, 1);
+  assert.deepEqual(lines, ['[err] Deploy failed']);
 });

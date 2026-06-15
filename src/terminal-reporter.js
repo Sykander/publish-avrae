@@ -13,7 +13,9 @@ const DEFAULT_TERMINAL_ROWS = 24;
 class TerminalReporter {
   constructor(options = {}) {
     this.stream = options.stream || process.stdout;
-    this.enabled = options.enabled ?? Boolean(this.stream.isTTY);
+    this.progressRequested = options.enabled ?? true;
+    this.enabled = this.progressRequested && Boolean(this.stream.isTTY);
+    this.finalOnly = this.progressRequested && !this.enabled;
     this.maxColumns = options.maxColumns;
     this.maxLines = options.maxLines;
     this.tasks = [];
@@ -40,6 +42,10 @@ class TerminalReporter {
 
     Object.assign(task, update);
 
+    if (this.finalOnly) {
+      return;
+    }
+
     if (!this.enabled && update.status !== 'running') {
       this.stream.write(this.formatTask(task) + '\n');
       return;
@@ -51,6 +57,11 @@ class TerminalReporter {
   finish() {
     if (this.enabled) {
       this.render({ final: true });
+      return;
+    }
+
+    if (this.finalOnly && this.tasks.length) {
+      this.writeFinalSnapshot();
     }
   }
 
@@ -85,6 +96,13 @@ class TerminalReporter {
     }
 
     return this.fitLines(this.windowedLines(maxLines));
+  }
+
+  writeFinalSnapshot() {
+    const lines = this.renderLines({ final: true });
+
+    this.stream.write(`${lines.join('\n')}\n`);
+    this.renderedLines = lines.length;
   }
 
   maxRenderLines() {

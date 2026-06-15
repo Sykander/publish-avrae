@@ -42,6 +42,8 @@ publish-avrae create-workshop --name "My Workshop" --sourcemap sourcemap.json
 
 `deploy` updates code, gvars, and any configured help docs. By default it fails if a mapped alias, subalias, or snippet does not already exist in the workshop.
 
+Deploy progress rewrites a bounded live block when run in an interactive terminal. In non-interactive output such as GitHub Actions logs, deploy prints a single final task snapshot instead of repeated progress blocks. Pass `--no-progress` if you prefer one simple line per completed task.
+
 `deploy --create-assets` may create missing aliases, subaliases, and snippets before deploying. It will not create gvars, because a fresh gvar id would not be recorded anywhere during deploy.
 
 `create-assets` creates missing workshop aliases, subaliases, snippets, and missing gvars. When it creates gvars, it writes the new ids back into the sourcemap file. If a sourcemap has `workshop.name` but no `workshop.id`, or you pass `--create-workshop --name "..."`, it can create the workshop and record that id too.

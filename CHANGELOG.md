@@ -1,3 +1,22 @@
+# 1.1.2
+
+## Summary
+
+This patch fixes real-project deploys where Avrae returns plain text after a
+gvar update, improves deploy output in CI by avoiding repeated progress blocks,
+and locks the test suite to 100% line, branch, and function coverage.
+
+## Changes
+
+- Accepted text Avrae responses
+- Fixed gvar deploy JSON parsing
+- Added CI-friendly deploy output
+- Preserved live TTY progress
+- Enforced 100% coverage thresholds
+- Expanded coverage edge-case tests
+- Refreshed package lock version
+- Bumped package version to 1.1.2
+
 # 1.1.1
 
 ## Summary

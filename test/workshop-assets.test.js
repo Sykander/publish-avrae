@@ -185,3 +185,66 @@ test('hydrateWorkshopAssets creates missing aliases, subaliases, and snippets', 
     ['snippet', 'workshop-id', { name: 'snippet', docs: '' }],
   ]);
 });
+
+test('hydrateWorkshopAssets handles alternate subcommand shapes and empty docs', async () => {
+  const calls = [];
+  const workshop = {
+    aliases: [
+      {
+        _id: 'parent-id',
+        name: 'parent',
+        sub_aliases: [{ _id: 'existing-child-id', name: 'existing' }],
+      },
+      { _id: 'empty-id', name: 'empty' },
+    ],
+    snippets: [],
+  };
+  const loaded = freshRequire(srcPath('workshop-assets.js'), {
+    [srcPath('avrae/get-workshop.js')]: {
+      async getWorkshop() {
+        return workshop;
+      },
+    },
+    [srcPath('avrae/create-alias.js')]: {
+      async createAlias(collectionId, payload) {
+        calls.push(['alias', collectionId, payload]);
+        return { id: 'created-parent-id' };
+      },
+    },
+    [srcPath('avrae/create-subalias.js')]: {
+      async createSubalias(aliasId, payload) {
+        calls.push(['subalias', aliasId, payload]);
+        return { id: `${aliasId}-child` };
+      },
+    },
+  });
+
+  try {
+    const result = await loaded.module.hydrateWorkshopAssets(
+      {
+        workshop: { id: 'workshop-id' },
+        aliases: [
+          { name: 'parent', sub_aliases: [{ name: 'existing' }] },
+          { name: 'empty', sub_aliases: [{ name: 'new-child' }] },
+          { name: 'created', sub_aliases: [{ name: 'created-child' }] },
+        ],
+      },
+      { createMissing: true },
+    );
+
+    assert.equal(result.aliases[0].sub_aliases[0].id, 'existing-child-id');
+    assert.equal(result.aliases[1].sub_aliases[0].id, 'empty-id-child');
+    assert.equal(
+      result.aliases[2].sub_aliases[0].id,
+      'created-parent-id-child',
+    );
+  } finally {
+    loaded.restore();
+  }
+
+  assert.deepEqual(calls, [
+    ['subalias', 'empty-id', { name: 'new-child', docs: '' }],
+    ['alias', 'workshop-id', { name: 'created', docs: '' }],
+    ['subalias', 'created-parent-id', { name: 'created-child', docs: '' }],
+  ]);
+});

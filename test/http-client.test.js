@@ -27,11 +27,12 @@ test('http-client wraps fetch methods, payloads, empty responses, and errors', a
     makeResponse({ text: '' }),
     makeResponse({ text: '{"updated":true}' }),
     makeResponse({ text: '{"patched":true}' }),
+    makeResponse({ text: 'Gvar updated.' }),
     makeResponse({
       ok: false,
       status: 418,
       statusText: 'Teapot',
-      text: '{"error":"short"}',
+      text: 'Short and stout',
     }),
   ];
 
@@ -66,10 +67,16 @@ test('http-client wraps fetch methods, payloads, empty responses, and errors', a
         data: { patched: true },
       },
     );
+    assert.deepEqual(
+      await post('https://example.test/gvars/1', { value: 'env' }),
+      {
+        data: 'Gvar updated.',
+      },
+    );
     await assert.rejects(get('https://example.test/fail', {}), (error) => {
       assert.equal(error.message, 'Request failed with status code 418');
       assert.deepEqual(error.response, {
-        data: { error: 'short' },
+        data: 'Short and stout',
         status: 418,
         statusText: 'Teapot',
       });
@@ -91,6 +98,10 @@ test('http-client wraps fetch methods, payloads, empty responses, and errors', a
     ['https://example.test/items/1', { method: 'GET' }],
     ['https://example.test/items/1', { method: 'PUT', body: '{"name":"new"}' }],
     ['https://example.test/items/1', { method: 'PATCH', body: '{"docs":""}' }],
+    [
+      'https://example.test/gvars/1',
+      { method: 'POST', body: '{"value":"env"}' },
+    ],
     ['https://example.test/fail', { method: 'GET' }],
   ]);
 });

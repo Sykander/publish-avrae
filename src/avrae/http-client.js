@@ -5,7 +5,11 @@ async function parseResponse(response) {
     return undefined;
   }
 
-  return JSON.parse(text);
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
 }
 
 async function request(method, url, payload, options = {}) {
