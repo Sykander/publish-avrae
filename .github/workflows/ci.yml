@@ -1,0 +1,164 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+  version:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+
+      - name: Check package version
+        run: |
+          node --input-type=module <<'NODE'
+          import { execFileSync } from 'node:child_process';
+          import { readFileSync } from 'node:fs';
+
+          const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
+          const packageName = packageJson.name;
+          const localVersion = packageJson.version;
+
+          function parseVersion(version) {
+            const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
+
+            if (!match) {
+              throw new Error(`Expected a MAJOR.MINOR.PATCH version, got ${version}`);
+            }
+
+            return match.slice(1).map(Number);
+          }
+
+          function compareVersions(a, b) {
+            for (let index = 0; index < a.length; index += 1) {
+              if (a[index] !== b[index]) {
+                return a[index] - b[index];
+              }
+            }
+
+            return 0;
+          }
+
+          const local = parseVersion(localVersion);
+          let publishedVersions = [];
+
+          try {
+            const output = execFileSync(
+              'npm',
+              ['view', packageName, 'versions', '--json'],
+              { encoding: 'utf8' },
+            );
+            const parsed = JSON.parse(output);
+            publishedVersions = Array.isArray(parsed) ? parsed : [parsed];
+          } catch (error) {
+            const output = [
+              error.stdout,
+              error.stderr,
+              error.message,
+            ]
+              .filter(Boolean)
+              .map(String)
+              .join('\n');
+
+            if (!output.includes('E404')) {
+              throw error;
+            }
+          }
+
+          const latestPublished = publishedVersions
+            .map((version) => ({
+              raw: version,
+              parsed: parseVersion(version),
+            }))
+            .sort((a, b) => compareVersions(b.parsed, a.parsed))[0];
+
+          if (!latestPublished) {
+            console.log(`${packageName}@${localVersion} has no published versions yet.`);
+            process.exit(0);
+          }
+
+          if (compareVersions(local, latestPublished.parsed) <= 0) {
+            throw new Error(
+              `${packageName}@${localVersion} must be higher than the latest published version, ${latestPublished.raw}.`,
+            );
+          }
+
+          console.log(
+            `${packageName}@${localVersion} is higher than the latest published version, ${latestPublished.raw}.`,
+          );
+          NODE
+
+  publish:
+    runs-on: ubuntu-latest
+    needs:
+      - lint
+      - test
+      - version
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.x
+          registry-url: https://registry.npmjs.org
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Publish package
+        run: npm publish
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

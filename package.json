@@ -9,7 +9,6 @@
   "scripts": {
     "format": "prettier . --write",
     "lint": "prettier . --check",
-    "prepublishOnly": "npm run lint && npm test",
     "test": "node --test --experimental-test-coverage"
   },
   "author": "",
