@@ -1,7 +1,8 @@
 # Development
 
 This project publishes a Node.js CLI package to npm, and the CLI can publish
-assets to Avrae. Those two publishing paths use different secrets.
+assets to Avrae. Avrae deploys use `AVRAE_TOKEN`; npm publishing uses Trusted
+Publishing from GitHub Actions.
 
 ## CI and publishing
 
@@ -53,36 +54,31 @@ Use it in a GitHub Actions step like this:
     AVRAE_TOKEN: ${{ secrets.AVRAE_TOKEN }}
 ```
 
-## NPM_TOKEN
+## npm Trusted Publishing
 
-`NPM_TOKEN` authenticates to npm. It is used by this repo's publish workflow to
-run `npm publish` from GitHub Actions.
+This repo uses npm Trusted Publishing, so GitHub Actions can run `npm publish`
+without a long-lived npm token.
 
-The workflow passes it to npm as `NODE_AUTH_TOKEN`:
+Configure the npm package settings for `publish-avrae` like this:
+
+1. Go to <https://www.npmjs.com/package/publish-avrae> and open package
+   settings.
+2. Under Trusted Publisher, choose GitHub Actions.
+3. Set the organization or user to `Sykander`.
+4. Set the repository to `publish-avrae`.
+5. Set the workflow filename to `ci.yml`.
+6. Allow `npm publish`.
+
+The publish job grants GitHub's OIDC token permission with:
 
 ```yaml
-- name: Publish package
-  run: npm publish
-  env:
-    NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+permissions:
+  contents: read
+  id-token: write
 ```
 
-To get an `NPM_TOKEN`:
-
-1. Go to <https://www.npmjs.com/> and log in with an account that can publish
-   `publish-avrae`.
-2. Open your profile menu and choose `Access Tokens`.
-3. Click `Generate New Token`.
-4. Create a granular access token with `Read and write` package access for
-   `publish-avrae`, or the package scope that owns it.
-5. Set an expiration date.
-6. Leave IP restrictions empty unless the workflow runs from known fixed egress
-   IP addresses.
-7. If npm package or account settings require interactive 2FA for publishing,
-   either configure Trusted Publishing instead of token publishing, or create a
-   token that can publish from CI without an interactive one-time password.
-8. Copy the token immediately.
-9. Add it to this GitHub repository as a secret named `NPM_TOKEN`.
+Do not add `NPM_TOKEN` back to the workflow unless Trusted Publishing is removed
+from the npm package settings.
 
 Before merging code to `main`, make sure `package.json` has a version that is
 higher than the latest version already published to npm.
