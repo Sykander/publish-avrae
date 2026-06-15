@@ -46,6 +46,8 @@ jobs:
 
   version:
     runs-on: ubuntu-latest
+    outputs:
+      should_publish: ${{ steps.version-check.outputs.should_publish }}
 
     steps:
       - name: Checkout
@@ -57,14 +59,22 @@ jobs:
           node-version: 24.x
 
       - name: Check package version
+        id: version-check
         run: |
           node --input-type=module <<'NODE'
           import { execFileSync } from 'node:child_process';
-          import { readFileSync } from 'node:fs';
+          import { appendFileSync, readFileSync } from 'node:fs';
 
           const packageJson = JSON.parse(readFileSync('package.json', 'utf8'));
           const packageName = packageJson.name;
           const localVersion = packageJson.version;
+          const githubOutput = process.env.GITHUB_OUTPUT;
+
+          function setShouldPublish(value) {
+            if (githubOutput) {
+              appendFileSync(githubOutput, `should_publish=${value}\n`);
+            }
+          }
 
           function parseVersion(version) {
             const match = /^(\d+)\.(\d+)\.(\d+)$/.exec(version);
@@ -121,22 +131,36 @@ jobs:
 
           if (!latestPublished) {
             console.log(`${packageName}@${localVersion} has no published versions yet.`);
+            setShouldPublish(true);
             process.exit(0);
           }
 
-          if (compareVersions(local, latestPublished.parsed) <= 0) {
+          const comparison = compareVersions(local, latestPublished.parsed);
+
+          if (comparison < 0) {
+            setShouldPublish(false);
             throw new Error(
-              `${packageName}@${localVersion} must be higher than the latest published version, ${latestPublished.raw}.`,
+              `${packageName}@${localVersion} is lower than the latest published version, ${latestPublished.raw}.`,
             );
+          }
+
+          if (comparison === 0) {
+            console.log(
+              `${packageName}@${localVersion} is already published. Skipping npm publish.`,
+            );
+            setShouldPublish(false);
+            process.exit(0);
           }
 
           console.log(
             `${packageName}@${localVersion} is higher than the latest published version, ${latestPublished.raw}.`,
           );
+          setShouldPublish(true);
           NODE
 
   publish:
     runs-on: ubuntu-latest
+    if: needs.version.outputs.should_publish == 'true'
     needs:
       - lint
       - test

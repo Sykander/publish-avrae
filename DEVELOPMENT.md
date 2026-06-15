@@ -8,15 +8,18 @@ Publishing from GitHub Actions.
 
 The GitHub Actions CI workflow runs whenever code lands on `main`.
 
-It has three required checks before publishing:
+It has three checks before publishing:
 
 1. `npm run lint`
 2. `npm test`
-3. A package version check that confirms `package.json` is higher than the
-   latest published version on npm.
+3. A package version check that compares `package.json` to the latest published
+   version on npm.
 
-If all three checks pass, CI runs `npm publish` and sends the package to the npm
-registry.
+If the local version is higher than the latest published version, CI runs
+`npm publish` and sends the package to the npm registry. If the local version is
+equal to the published version, the version check succeeds and the publish job is
+skipped. If the local version is lower than the published version, the version
+check fails and the publish job is skipped.
 
 ## GitHub repository secrets
 
