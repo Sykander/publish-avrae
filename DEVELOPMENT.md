@@ -66,7 +66,7 @@ Configure the npm package settings for `publish-avrae` like this:
 2. Under Trusted Publisher, choose GitHub Actions.
 3. Set the organization or user to `Sykander`.
 4. Set the repository to `publish-avrae`.
-5. Set the workflow filename to `ci.yml`.
+5. Set the workflow filename to `ci.yml`, all lowercase.
 6. Allow `npm publish`.
 
 The publish job grants GitHub's OIDC token permission with:
@@ -79,6 +79,9 @@ permissions:
 
 Do not add `NPM_TOKEN` back to the workflow unless Trusted Publishing is removed
 from the npm package settings.
+
+The trusted publisher workflow filename is case-sensitive. If npm shows
+`CI.yml`, edit it to `ci.yml` to match `.github/workflows/ci.yml`.
 
 Before merging code to `main`, make sure `package.json` has a version that is
 higher than the latest version already published to npm.
