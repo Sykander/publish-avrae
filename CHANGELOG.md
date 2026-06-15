@@ -1,3 +1,20 @@
+# Unreleased
+
+## Summary
+
+This in-progress release makes sourcemap docs docfile-only, ensures docfile-only
+changes deploy even when code is unchanged, and adds a CLI command for generating
+env gvar files from sourcemaps.
+
+## Changes
+
+- Added generate-env CLI command
+- Generated env gvar files from sourcemap ids
+- Added env file environment and version output
+- Deployed docfile changes without code changes
+- Removed inline sourcemap docs support
+- Rejected legacy sourcemap docs fields
+
 # 1.1.2
 
 ## Summary

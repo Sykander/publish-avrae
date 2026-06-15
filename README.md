@@ -35,6 +35,7 @@ You can call these with `npm run deploy` and `npm run test:config`. If your proj
 publish-avrae deploy --sourcemap sourcemap.json
 publish-avrae deploy -s sourcemap.json --create-assets
 publish-avrae create-assets --sourcemap sourcemap.json
+publish-avrae generate-env --sourcemap sourcemap.json --output src/gvars/env.gvar [--version 1.2.3] [--environment Development]
 publish-avrae check-config --sourcemap sourcemap.json
 publish-avrae compare-config sourcemap.dev.json sourcemap.prod.json
 publish-avrae create-workshop --name "My Workshop" --sourcemap sourcemap.json
@@ -47,6 +48,8 @@ Deploy progress rewrites a bounded live block when run in an interactive termina
 `deploy --create-assets` may create missing aliases, subaliases, and snippets before deploying. It will not create gvars, because a fresh gvar id would not be recorded anywhere during deploy.
 
 `create-assets` creates missing workshop aliases, subaliases, snippets, and missing gvars. When it creates gvars, it writes the new ids back into the sourcemap file. If a sourcemap has `workshop.name` but no `workshop.id`, or you pass `--create-workshop --name "..."`, it can create the workshop and record that id too.
+
+`generate-env` writes an env gvar file from a sourcemap's gvar ids. It sets `environment`, sets `version`, and writes a `gvars` lookup for every gvar in the sourcemap. Missing environment or version values are written as `None`.
 
 `check-config` validates one sourcemap before deploy. `compare-config` validates that two sourcemaps describe the same code in separate environments.
 
@@ -66,7 +69,7 @@ Copy the `Value` next to the `avrae-token` key
 
 You'll first need to write a sourcemap for your project. This is a json file which will be used to map the files within your project to the aliases, snippets and gvars you wish to publish.
 
-Paths in `file`, `docs_file`, `help_file`, and `documentation_file` are resolved relative to the directory where you run `publish-avrae`, not relative to the sourcemap file. For example, a sourcemap at `utils/sourcemap.dev.json` can still reference `src/gvars/my_gvar.gvar` when the command is run from the project root.
+Paths in `file` and `docs_file` are resolved relative to the directory where you run `publish-avrae`, not relative to the sourcemap file. For example, a sourcemap at `utils/sourcemap.dev.json` can still reference `src/gvars/my_gvar.gvar` when the command is run from the project root.
 
 If you only want to publish gvars then the workshop property is optional, otherwise you must specify a workshop to publish the changes to.
 
@@ -115,7 +118,7 @@ If you only want to publish gvars then the workshop property is optional, otherw
 Aliases, subaliases, and snippets can include Markdown help text with `docs_file`.
 That file is deployed to the Avrae help/docs field, which is what users see from commands such as `!help my_alias`.
 
-Inline `docs` is also supported for small entries, but `docs_file` is preferred for real help text.
+Inline docs are not supported in the sourcemap. Put help text in a Markdown file and reference it with `docs_file`.
 
 #### Workshop ID
 
@@ -131,28 +134,30 @@ In this case you will want to configure the `workshop.environment` option in you
 
 `workshop.environment` should be a gvar id for a file which lists the gvar ids to use in that environment.
 
+You can generate that env file from a sourcemap:
+
+```sh
+publish-avrae generate-env --sourcemap sourcemap.dev.json --output src/gvars/env.gvar --version 1.2.3 --environment Development
+```
+
 A typical `env` gvar might look something like.
 
 ```
-ENV = "Development"
+environment = "Development"
+version = "1.2.3"
 
 gvars = {
+    "env": "BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB",
     "my_gvar": "AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA"
 }
-
-def get_gvar_id_by_name(name):
-    if name in gvars:
-        return gvars[name]
-
-    {}[f"Didn't find GVAR for name {name}!"]
 ```
 
 And then you would use that gvar within your project like so:
 
 ```
-using(env="AAAAAAAA-AAAA-AAAA-AAAA-AAAAAAAAAAAA")
+using(env="BBBBBBBB-BBBB-BBBB-BBBB-BBBBBBBBBBBB")
 using(
-    my_gvar = env.get_gvar_id_by_name("my_gvar")
+    my_gvar = env.gvars["my_gvar"]
 )
 
 my_gvar.do_a_thing()

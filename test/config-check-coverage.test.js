@@ -28,9 +28,11 @@ test('checkSourceMap reports structural, duplicate, and id errors', () => {
       aliases: [
         {
           file: 'alias.alias',
+          docs: 'inline docs',
           docs_file: 'missing.md',
+          documentation_file: 'old-docs.md',
           sub_aliases: [
-            { name: 'child', file: 'missing-child.alias' },
+            { name: 'child', file: 'missing-child.alias', help: 'inline help' },
             { name: 'child', file: 'child.alias' },
             { file: 'child.alias' },
           ],
@@ -40,7 +42,7 @@ test('checkSourceMap reports structural, duplicate, and id errors', () => {
       ],
       snippets: [
         { name: 'missing-file' },
-        { file: 'snippet.snippet' },
+        { file: 'snippet.snippet', help_file: 'old-help.md' },
         { name: 'snippet', file: 'snippet.snippet' },
         { name: 'snippet', file: 'snippet.snippet' },
       ],
@@ -62,12 +64,16 @@ test('checkSourceMap reports structural, duplicate, and id errors', () => {
   assert.match(errors, /workshop\.id is required/);
   assert.match(errors, /no gvar named "env"/);
   assert.match(errors, /Alias "unknown" is missing name/);
+  assert.match(errors, /Alias "unknown" uses unsupported docs/);
+  assert.match(errors, /Alias "unknown" uses unsupported documentation_file/);
   assert.match(errors, /Alias "unknown" references missing file missing\.md/);
   assert.match(errors, /Alias "dup" duplicates name "dup"/);
   assert.match(errors, /Subalias under "unknown" "child" duplicates name/);
+  assert.match(errors, /Subalias "unknown child" uses unsupported help/);
   assert.match(errors, /Subalias "unknown unknown" is missing name/);
   assert.match(errors, /missing-child\.alias/);
   assert.match(errors, /Snippet "unknown" is missing name/);
+  assert.match(errors, /Snippet "unknown" uses unsupported help_file/);
   assert.match(errors, /Snippet "missing-file" is missing file/);
   assert.match(errors, /Snippet "snippet" duplicates name "snippet"/);
   assert.match(errors, /Gvar "unknown" is missing name/);
@@ -94,6 +100,20 @@ test('checkSourceMap can relax generated asset id requirements', () => {
   );
 
   assert.equal(result.ok, true);
+});
+
+test('checkSourceMap reports null named entries without crashing', () => {
+  const result = checkSourceMap(
+    {
+      snippets: [null],
+    },
+    { requireWorkshopId: false },
+  );
+  const errors = result.errors.join('\n');
+
+  assert.equal(result.ok, false);
+  assert.match(errors, /Snippet "unknown" is missing name/);
+  assert.match(errors, /Snippet "unknown" is missing file/);
 });
 
 test('compareSourceMaps reports entry, subalias, file, docs, and shared id drift', () => {

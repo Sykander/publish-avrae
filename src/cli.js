@@ -64,6 +64,7 @@ function printHelp() {
   console.log(`Usage:
   publish-avrae deploy [--sourcemap sourcemap.json] [--create-assets]
   publish-avrae create-assets [--sourcemap sourcemap.json]
+  publish-avrae generate-env --sourcemap sourcemap.json --output src/gvars/env.gvar [--version 1.2.3] [--environment Development]
   publish-avrae check-config [--sourcemap sourcemap.json]
   publish-avrae compare-config <source.json> <target.json>
   publish-avrae create-workshop --name "Workshop name" [--sourcemap sourcemap.json]
@@ -132,6 +133,19 @@ async function createAssetsCommand(options) {
     workshopImage: options.image,
     workshopName: options.name,
   });
+}
+
+async function generateEnvCommand(options) {
+  const { generateEnvFile } = require('./env-file');
+  const { sourceMap, baseDir } = loadSourceMap(sourceMapOption(options));
+  const { filePath } = generateEnvFile(sourceMap, {
+    baseDir,
+    environmentName: options.environment,
+    outputPath: options.output,
+    version: options.version,
+  });
+
+  console.log(`[ok] Wrote ${filePath}.`);
 }
 
 async function checkConfigCommand(options) {
@@ -208,6 +222,8 @@ async function main(argv = process.argv.slice(2)) {
       return deployCommand(options);
     case 'create-assets':
       return createAssetsCommand(options);
+    case 'generate-env':
+      return generateEnvCommand(options);
     case 'check-config':
       return checkConfigCommand(options);
     case 'compare-config':

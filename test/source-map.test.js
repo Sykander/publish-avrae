@@ -113,7 +113,7 @@ test('loads sourcemap asset paths relative to the command working directory', ()
   }
 });
 
-test('finds docs from file aliases and inline fields', () => {
+test('finds docs from docs_file only', () => {
   const baseDir = makeTempDir();
   writeFiles(baseDir, {
     'docs.md': 'docs file',
@@ -122,25 +122,25 @@ test('finds docs from file aliases and inline fields', () => {
   });
 
   assert.equal(getDocsFile({ docs_file: 'docs.md' }), 'docs.md');
-  assert.equal(getDocsFile({ help_file: 'help.md' }), 'help.md');
+  assert.equal(getDocsFile({ help_file: 'help.md' }), undefined);
   assert.equal(
     getDocsFile({ documentation_file: 'documentation.md' }),
-    'documentation.md',
+    undefined,
   );
   assert.equal(getDocsFile({}), undefined);
 
   assert.equal(getDocsFileProperty({ docs_file: 'docs.md' }), 'docs_file');
-  assert.equal(getDocsFileProperty({ help_file: 'help.md' }), 'help_file');
+  assert.equal(getDocsFileProperty({ help_file: 'help.md' }), null);
   assert.equal(
     getDocsFileProperty({ documentation_file: 'documentation.md' }),
-    'documentation_file',
+    null,
   );
   assert.equal(getDocsFileProperty({}), null);
 
   assert.equal(getAssetDocs({ docs_file: 'docs.md' }, baseDir), 'docs file');
-  assert.equal(getAssetDocs({ help_file: 'help.md' }, baseDir), 'help file');
-  assert.equal(getAssetDocs({ docs: '' }, baseDir), '');
-  assert.equal(getAssetDocs({ help: 'inline help' }, baseDir), 'inline help');
+  assert.equal(getAssetDocs({ help_file: 'help.md' }, baseDir), undefined);
+  assert.equal(getAssetDocs({ docs: '' }, baseDir), undefined);
+  assert.equal(getAssetDocs({ help: 'inline help' }, baseDir), undefined);
   assert.equal(getAssetDocs({}, baseDir), undefined);
 });
 

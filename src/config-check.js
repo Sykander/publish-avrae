@@ -11,6 +11,12 @@ const {
 const WORKSHOP_ID_REGEX = /^[a-f\d]{24}$/i;
 const GVAR_ID_REGEX =
   /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/i;
+const UNSUPPORTED_DOCS_FIELDS = [
+  'docs',
+  'help',
+  'help_file',
+  'documentation_file',
+];
 
 function createResult() {
   const errors = [];
@@ -61,11 +67,22 @@ function checkFile(result, asset, baseDir, label, property = 'file') {
   }
 }
 
+function checkUnsupportedDocsFields(result, asset, label) {
+  for (const property of UNSUPPORTED_DOCS_FIELDS) {
+    if (Object.prototype.hasOwnProperty.call(asset || {}, property)) {
+      result.errors.push(
+        `${label} uses unsupported ${property}. Use docs_file instead.`,
+      );
+    }
+  }
+}
+
 function checkNamedAsset(result, asset, baseDir, label) {
   if (!asset?.name) {
     result.errors.push(`${label} is missing name.`);
   }
 
+  checkUnsupportedDocsFields(result, asset, label);
   checkFile(result, asset, baseDir, label);
 
   if (getDocsFile(asset)) {

@@ -7,8 +7,11 @@ test('deploy updates changed aliases, subaliases, snippets, docs, and gvars', as
   const baseDir = makeTempDir();
   writeFiles(baseDir, {
     'alias.alias': 'using(env="old-env")\nalias body',
+    'alias.md': 'new alias docs',
     'child.alias': 'child body',
+    'child.md': 'child docs',
     'snippet.snippet': 'snippet body',
+    'snippet.md': 'snippet docs',
     'gvar.gvar': 'using(env="old-env")\ngvar body',
   });
 
@@ -77,14 +80,14 @@ test('deploy updates changed aliases, subaliases, snippets, docs, and gvars', as
             name: 'alias',
             id: 'alias-id',
             file: 'alias.alias',
-            docs: 'new alias docs',
+            docs_file: 'alias.md',
             _workshopAsset: { docs: 'old alias docs' },
             sub_aliases: [
               {
                 name: 'child',
                 id: 'child-id',
                 file: 'child.alias',
-                docs: 'child docs',
+                docs_file: 'child.md',
                 _workshopAsset: { docs: '' },
               },
             ],
@@ -95,7 +98,7 @@ test('deploy updates changed aliases, subaliases, snippets, docs, and gvars', as
             name: 'snippet',
             id: 'snippet-id',
             file: 'snippet.snippet',
-            docs: 'snippet docs',
+            docs_file: 'snippet.md',
             _workshopAsset: { docs: '' },
           },
         ],
@@ -216,7 +219,10 @@ test('deploy skips unchanged gvars without workshop assets', async () => {
 
 test('deploy skips unchanged workshop assets', async () => {
   const baseDir = makeTempDir();
-  writeFiles(baseDir, { 'alias.alias': 'same alias' });
+  writeFiles(baseDir, {
+    'alias.alias': 'same alias',
+    'alias.md': 'same docs',
+  });
   const loaded = freshRequire(srcPath('deploy.js'), {
     [srcPath('workshop-assets.js')]: {
       async hydrateWorkshopAssets(sourceMap) {
@@ -249,7 +255,7 @@ test('deploy skips unchanged workshop assets', async () => {
             name: 'alias',
             id: 'alias-id',
             file: 'alias.alias',
-            docs: 'same docs',
+            docs_file: 'alias.md',
             _workshopAsset: { docs: 'same docs' },
           },
         ],
@@ -263,9 +269,69 @@ test('deploy skips unchanged workshop assets', async () => {
   }
 });
 
+test('deploy updates docfile changes when code is unchanged', async () => {
+  const baseDir = makeTempDir();
+  writeFiles(baseDir, {
+    'alias.alias': 'same alias',
+    'alias.md': 'new docs',
+  });
+  const calls = [];
+  const loaded = freshRequire(srcPath('deploy.js'), {
+    [srcPath('workshop-assets.js')]: {
+      async hydrateWorkshopAssets(sourceMap) {
+        return sourceMap;
+      },
+    },
+    [srcPath('avrae/get-alias.js')]: {
+      async getAlias() {
+        return [{ content: 'same alias', version: 1, is_current: true }];
+      },
+    },
+    [srcPath('avrae/update-alias.js')]: {
+      async updateAlias() {
+        throw new Error('should not update alias code');
+      },
+    },
+    [srcPath('avrae/update-docs.js')]: {
+      async updateDocs(type, id, payload) {
+        calls.push(['updateDocs', type, id, payload]);
+      },
+    },
+  });
+
+  try {
+    const results = await loaded.module.deploy(
+      {
+        workshop: { id: 'workshop-id' },
+        aliases: [
+          {
+            name: 'alias',
+            id: 'alias-id',
+            file: 'alias.alias',
+            docs_file: 'alias.md',
+            _workshopAsset: { docs: 'old docs' },
+          },
+        ],
+      },
+      { baseDir },
+    );
+
+    assert.deepEqual(results, [{ status: 'done', message: 'docs updated' }]);
+  } finally {
+    loaded.restore();
+  }
+
+  assert.deepEqual(calls, [
+    ['updateDocs', 'alias', 'alias-id', { name: 'alias', docs: 'new docs' }],
+  ]);
+});
+
 test('deploy uses fallback versions and can clear docs', async () => {
   const baseDir = makeTempDir();
-  writeFiles(baseDir, { 'alias.alias': 'new alias' });
+  writeFiles(baseDir, {
+    'alias.alias': 'new alias',
+    'alias.md': '',
+  });
   const calls = [];
   const loaded = freshRequire(srcPath('deploy.js'), {
     [srcPath('workshop-assets.js')]: {
@@ -299,7 +365,7 @@ test('deploy uses fallback versions and can clear docs', async () => {
             name: 'alias',
             id: 'alias-id',
             file: 'alias.alias',
-            docs: '',
+            docs_file: 'alias.md',
             _workshopAsset: { docs: 'old docs' },
           },
         ],

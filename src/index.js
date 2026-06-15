@@ -1,6 +1,7 @@
 const { deploy } = require('./deploy');
 const { createAssets } = require('./create-assets');
 const { checkSourceMap, compareSourceMaps } = require('./config-check');
+const { buildEnvFile, generateEnvFile } = require('./env-file');
 const { createAlias } = require('./avrae/create-alias');
 const { createGvar } = require('./avrae/create-gvar');
 const { createSnippet } = require('./avrae/create-snippet');
@@ -18,6 +19,7 @@ const { updateGvar } = require('./avrae/update-gvar');
 const { updateSnippet } = require('./avrae/update-snippet');
 
 module.exports = {
+  buildEnvFile,
   checkSourceMap,
   compareSourceMaps,
   createAlias,
@@ -27,6 +29,7 @@ module.exports = {
   createSubalias,
   createWorkshop,
   deploy,
+  generateEnvFile,
   getAlias,
   getGvar,
   getHeaders,

@@ -59,7 +59,7 @@ function readAssetFile(asset, baseDir = process.cwd(), property = 'file') {
 }
 
 function getDocsFile(asset) {
-  return asset?.docs_file || asset?.help_file || asset?.documentation_file;
+  return asset?.docs_file;
 }
 
 function getDocsFileProperty(asset) {
@@ -67,42 +67,17 @@ function getDocsFileProperty(asset) {
     return 'docs_file';
   }
 
-  if (asset?.help_file) {
-    return 'help_file';
-  }
-
-  if (asset?.documentation_file) {
-    return 'documentation_file';
-  }
-
   return null;
-}
-
-function getInlineDocs(asset) {
-  if (typeof asset?.docs === 'string') {
-    return asset.docs;
-  }
-
-  if (typeof asset?.help === 'string') {
-    return asset.help;
-  }
-
-  return undefined;
 }
 
 function getAssetDocs(asset, baseDir = process.cwd()) {
   const docsFile = getDocsFile(asset);
-  const docsFileProperty = getDocsFileProperty(asset);
 
   if (docsFile) {
-    return readAssetFile(
-      { ...asset, [docsFileProperty]: docsFile },
-      baseDir,
-      docsFileProperty,
-    );
+    return readAssetFile(asset, baseDir, 'docs_file');
   }
 
-  return getInlineDocs(asset);
+  return undefined;
 }
 
 function collectAliases(sourceMap) {

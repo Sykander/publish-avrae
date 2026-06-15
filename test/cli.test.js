@@ -235,6 +235,40 @@ test('main create-assets validates relaxed config and dispatches options', async
   }
 });
 
+test('main generate-env writes an env file from a sourcemap', async () => {
+  const baseDir = makeTempDir();
+  const sourceMapPath = writeSourceMap(baseDir, 'sourcemap.json', {
+    gvars: [
+      { name: 'env', file: 'env.gvar', id: UUID_TWO },
+      { name: 'data', file: 'data.gvar', id: UUID_ONE },
+    ],
+  });
+
+  const { lines } = await withCwd(baseDir, () =>
+    captureConsole('log', () =>
+      require('../src/cli').main([
+        'generate-env',
+        '--sourcemap',
+        sourceMapPath,
+        '--output',
+        'src/gvars/env.gvar',
+        '--version',
+        '1.2.3',
+        '--environment',
+        'Development',
+      ]),
+    ),
+  );
+  const outputPath = path.join(baseDir, 'src/gvars/env.gvar');
+  const content = fs.readFileSync(outputPath, 'utf8');
+
+  assert.deepEqual(lines, [`[ok] Wrote ${outputPath}.`]);
+  assert.match(content, /environment = "Development"/);
+  assert.match(content, /version = "1.2.3"/);
+  assert.match(content, new RegExp(`"env": "${UUID_TWO}"`));
+  assert.match(content, new RegExp(`"data": "${UUID_ONE}"`));
+});
+
 test('main check-config uses the default sourcemap name and prints warnings', async () => {
   const baseDir = makeTempDir();
   const originalCwd = process.cwd();

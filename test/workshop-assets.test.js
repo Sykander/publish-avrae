@@ -2,7 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const { hydrateWorkshopAssets } = require('../src/workshop-assets');
-const { freshRequire, srcPath } = require('./helpers');
+const { freshRequire, makeTempDir, srcPath, writeFiles } = require('./helpers');
 
 test('hydrateWorkshopAssets returns gvar-only sourcemaps without a workshop id', async () => {
   const sourceMap = {
@@ -125,8 +125,13 @@ test('hydrateWorkshopAssets reports missing existing workshop assets', async () 
 });
 
 test('hydrateWorkshopAssets creates missing aliases, subaliases, and snippets', async () => {
+  const baseDir = makeTempDir();
   const calls = [];
   const workshop = { aliases: [], snippets: [] };
+  writeFiles(baseDir, {
+    'alias.md': 'alias docs',
+    'child.md': 'child docs',
+  });
   const loaded = freshRequire(srcPath('workshop-assets.js'), {
     [srcPath('avrae/get-workshop.js')]: {
       async getWorkshop() {
@@ -159,13 +164,14 @@ test('hydrateWorkshopAssets creates missing aliases, subaliases, and snippets', 
       aliases: [
         {
           name: 'alias',
-          docs: 'alias docs',
-          sub_aliases: [{ name: 'child', help: 'child docs' }],
+          docs_file: 'alias.md',
+          sub_aliases: [{ name: 'child', docs_file: 'child.md' }],
         },
       ],
       snippets: [{ name: 'snippet' }],
     };
     const result = await loaded.module.hydrateWorkshopAssets(sourceMap, {
+      baseDir,
       createMissing: true,
     });
 
