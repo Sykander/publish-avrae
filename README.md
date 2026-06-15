@@ -64,6 +64,8 @@ Copy the `Value` next to the `avrae-token` key
 
 You'll first need to write a sourcemap for your project. This is a json file which will be used to map the files within your project to the aliases, snippets and gvars you wish to publish.
 
+Paths in `file`, `docs_file`, `help_file`, and `documentation_file` are resolved relative to the directory where you run `publish-avrae`, not relative to the sourcemap file. For example, a sourcemap at `utils/sourcemap.dev.json` can still reference `src/gvars/my_gvar.gvar` when the command is run from the project root.
+
 If you only want to publish gvars then the workshop property is optional, otherwise you must specify a workshop to publish the changes to.
 
 ```json

@@ -56,19 +56,61 @@ test('loads, writes, resolves, and reads sourcemap files', () => {
   assert.equal(fs.readFileSync(filePath, 'utf8').endsWith('\n'), true);
   assert.equal(resolveSourceMapPath(filePath), filePath);
 
-  const loaded = loadSourceMap(filePath);
-  assert.equal(loaded.filePath, filePath);
-  assert.equal(loaded.baseDir, baseDir);
-  assert.deepEqual(loaded.sourceMap.workshop, {});
-  assert.equal(
-    resolveAssetPath(loaded.sourceMap.aliases[0], baseDir),
-    path.join(baseDir, 'alias.alias'),
-  );
-  assert.equal(resolveAssetPath({}, baseDir), null);
-  assert.equal(
-    readAssetFile(loaded.sourceMap.aliases[0], baseDir),
-    'alias body',
-  );
+  const originalCwd = process.cwd();
+
+  try {
+    process.chdir(baseDir);
+
+    const loaded = loadSourceMap(filePath);
+    assert.equal(loaded.filePath, filePath);
+    assert.equal(loaded.baseDir, baseDir);
+    assert.deepEqual(loaded.sourceMap.workshop, {});
+    assert.equal(
+      resolveAssetPath(loaded.sourceMap.aliases[0], baseDir),
+      path.join(baseDir, 'alias.alias'),
+    );
+    assert.equal(resolveAssetPath({}, baseDir), null);
+    assert.equal(
+      readAssetFile(loaded.sourceMap.aliases[0], baseDir),
+      'alias body',
+    );
+  } finally {
+    process.chdir(originalCwd);
+  }
+});
+
+test('loads sourcemap asset paths relative to the command working directory', () => {
+  const baseDir = makeTempDir();
+  const filePath = path.join(baseDir, 'utils', 'sourcemap.dev.json');
+  const sourceMap = {
+    gvars: [{ name: 'data', file: 'src/gvars/data.gvar' }],
+  };
+  const originalCwd = process.cwd();
+
+  writeFiles(baseDir, {
+    'src/gvars/data.gvar': 'data',
+  });
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
+  writeSourceMap(filePath, sourceMap);
+
+  try {
+    process.chdir(baseDir);
+
+    const loaded = loadSourceMap('./utils/sourcemap.dev.json');
+
+    assert.equal(loaded.filePath, filePath);
+    assert.equal(loaded.baseDir, baseDir);
+    assert.equal(
+      resolveAssetPath(loaded.sourceMap.gvars[0], loaded.baseDir),
+      path.join(baseDir, 'src/gvars/data.gvar'),
+    );
+    assert.equal(
+      readAssetFile(loaded.sourceMap.gvars[0], loaded.baseDir),
+      'data',
+    );
+  } finally {
+    process.chdir(originalCwd);
+  }
 });
 
 test('finds docs from file aliases and inline fields', () => {

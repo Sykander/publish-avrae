@@ -17,8 +17,20 @@ const UUID_TWO = '22222222-2222-4222-8222-222222222222';
 
 function writeSourceMap(baseDir, name, sourceMap) {
   const filePath = path.join(baseDir, name);
+  fs.mkdirSync(path.dirname(filePath), { recursive: true });
   fs.writeFileSync(filePath, `${JSON.stringify(sourceMap, null, 2)}\n`);
   return filePath;
+}
+
+async function withCwd(dir, callback) {
+  const originalCwd = process.cwd();
+
+  try {
+    process.chdir(dir);
+    return await callback();
+  } finally {
+    process.chdir(originalCwd);
+  }
 }
 
 async function runCliEntrypoint(args, mocks = {}) {
@@ -117,14 +129,16 @@ test('main deploy validates config and dispatches to deploy', async () => {
   });
 
   try {
-    const { lines } = await captureConsole('log', () =>
-      loaded.module.main([
-        'deploy',
-        '--sourcemap',
-        sourceMapPath,
-        '--create-assets',
-        '--no-progress',
-      ]),
+    const { lines } = await withCwd(baseDir, () =>
+      captureConsole('log', () =>
+        loaded.module.main([
+          'deploy',
+          '--sourcemap',
+          sourceMapPath,
+          '--create-assets',
+          '--no-progress',
+        ]),
+      ),
     );
 
     assert.deepEqual(lines, ['[ok] Config check passed.']);
@@ -133,6 +147,41 @@ test('main deploy validates config and dispatches to deploy', async () => {
     assert.equal(calls[0][2].baseDir, baseDir);
     assert.equal(calls[0][2].createAssets, true);
     assert.equal(calls[0][2].reporter.enabled, false);
+  } finally {
+    loaded.restore();
+  }
+});
+
+test('main deploy resolves sourcemap file entries from the command working directory', async () => {
+  const baseDir = makeTempDir();
+  writeFiles(baseDir, { 'src/gvars/data.gvar': 'data' });
+  writeSourceMap(baseDir, 'utils/sourcemap.dev.json', {
+    gvars: [{ name: 'data', file: 'src/gvars/data.gvar', id: UUID_ONE }],
+  });
+  const calls = [];
+  const loaded = freshRequire(srcPath('cli.js'), {
+    [srcPath('deploy.js')]: {
+      async deploy(sourceMap, options) {
+        calls.push(['deploy', sourceMap, options]);
+      },
+    },
+  });
+
+  try {
+    const { lines } = await withCwd(baseDir, () =>
+      captureConsole('log', () =>
+        loaded.module.main([
+          'deploy',
+          '--sourcemap',
+          './utils/sourcemap.dev.json',
+          '--no-progress',
+        ]),
+      ),
+    );
+
+    assert.deepEqual(lines, ['[ok] Config check passed.']);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0][2].baseDir, baseDir);
   } finally {
     loaded.restore();
   }
@@ -154,20 +203,22 @@ test('main create-assets validates relaxed config and dispatches options', async
   });
 
   try {
-    await captureConsole('log', () =>
-      loaded.module.main([
-        'create-assets',
-        '-s',
-        sourceMapPath,
-        '--create-workshop',
-        '--name',
-        'Workshop',
-        '--description',
-        'Description',
-        '--image',
-        'Image',
-        '--no-progress',
-      ]),
+    await withCwd(baseDir, () =>
+      captureConsole('log', () =>
+        loaded.module.main([
+          'create-assets',
+          '-s',
+          sourceMapPath,
+          '--create-workshop',
+          '--name',
+          'Workshop',
+          '--description',
+          'Description',
+          '--image',
+          'Image',
+          '--no-progress',
+        ]),
+      ),
     );
 
     assert.equal(calls.length, 1);
@@ -226,13 +277,15 @@ test('main check-config throws config errors after printing them', async () => {
   const { main } = require('../src/cli');
 
   const { lines } = await captureConsole('log', async () => {
-    await assert.rejects(
-      main(['check-config', '--source-map', sourceMapPath]),
-      (error) => {
-        assert.equal(error.message, 'Config check failed.');
-        assert.equal(error.isConfigError, true);
-        return true;
-      },
+    await withCwd(baseDir, () =>
+      assert.rejects(
+        main(['check-config', '--source-map', sourceMapPath]),
+        (error) => {
+          assert.equal(error.message, 'Config check failed.');
+          assert.equal(error.isConfigError, true);
+          return true;
+        },
+      ),
     );
   });
 
@@ -251,8 +304,10 @@ test('main compare-config validates two sourcemaps', async () => {
   });
   const { main } = require('../src/cli');
 
-  const { lines } = await captureConsole('log', () =>
-    main(['compare-config', sourcePath, targetPath]),
+  const { lines } = await withCwd(baseDir, () =>
+    captureConsole('log', () =>
+      main(['compare-config', sourcePath, targetPath]),
+    ),
   );
 
   assert.match(lines.join('\n'), /Comparing dev\.json and prod\.json/);
@@ -335,16 +390,18 @@ test('the CLI entrypoint reports non-config errors and task failures', async () 
     gvars: [{ name: 'data', file: 'data.gvar', id: UUID_ONE }],
   });
 
-  const { lines, result } = await captureConsole('error', () =>
-    runCliEntrypoint(['deploy', '--sourcemap', sourceMapPath], {
-      [srcPath('deploy.js')]: {
-        async deploy() {
-          const error = new Error('Deploy failed');
-          error.failures = [new Error('Inner failure')];
-          throw error;
+  const { lines, result } = await withCwd(baseDir, () =>
+    captureConsole('error', () =>
+      runCliEntrypoint(['deploy', '--sourcemap', sourceMapPath], {
+        [srcPath('deploy.js')]: {
+          async deploy() {
+            const error = new Error('Deploy failed');
+            error.failures = [new Error('Inner failure')];
+            throw error;
+          },
         },
-      },
-    }),
+      }),
+    ),
   );
 
   assert.equal(result, 1);

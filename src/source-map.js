@@ -33,7 +33,9 @@ function loadSourceMap(sourceMapFile = DEFAULT_SOURCE_MAP_FILE) {
 
   return {
     filePath,
-    baseDir: path.dirname(filePath),
+    // Asset paths in the sourcemap are project paths resolved from where the
+    // CLI is run, even when the sourcemap itself lives in a subdirectory.
+    baseDir: process.cwd(),
     sourceMap: normalizeSourceMap(sourceMap),
   };
 }
