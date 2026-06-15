@@ -1,14 +1,81 @@
 const readline = require('readline');
+const { performance } = require('node:perf_hooks');
 
-const STATUS_PREFIX = {
-  pending: '[ ]',
-  running: '[>]',
-  done: '[ok]',
-  skipped: '[-]',
-  failed: '[err]',
+const STATUS_SYMBOL = {
+  pending: '○',
+  running: '▶',
+  done: '✔',
+  skipped: '-',
+  failed: '✖',
 };
+const STATUS_COLOR = {
+  pending: 'gray',
+  running: 'blue',
+  done: 'green',
+  skipped: 'yellow',
+  failed: 'red',
+};
+const COLOR_CODE = {
+  blue: 34,
+  gray: 90,
+  green: 32,
+  red: 31,
+  yellow: 33,
+};
+const FINAL_STATUSES = new Set(['done', 'skipped', 'failed']);
+const ANSI_PATTERN = /\u001b\[[0-9;]*m/g;
 const DEFAULT_TERMINAL_COLUMNS = 80;
 const DEFAULT_TERMINAL_ROWS = 24;
+
+function defaultNow() {
+  return performance.now();
+}
+
+function formatDurationValue(durationMs) {
+  if (!Number.isFinite(durationMs)) {
+    return undefined;
+  }
+
+  return Number(Math.max(0, durationMs).toFixed(6)).toString();
+}
+
+function isForcedColor() {
+  if (!Object.hasOwn(process.env, 'FORCE_COLOR')) {
+    return undefined;
+  }
+
+  return process.env.FORCE_COLOR !== '0';
+}
+
+function supportsColor(stream) {
+  const forcedColor = isForcedColor();
+
+  if (forcedColor !== undefined) {
+    return forcedColor;
+  }
+
+  if (process.env.NO_COLOR || process.env.NODE_DISABLE_COLORS) {
+    return false;
+  }
+
+  if (typeof stream?.hasColors === 'function') {
+    return stream.hasColors();
+  }
+
+  if (typeof stream?.getColorDepth === 'function') {
+    return stream.getColorDepth() > 1;
+  }
+
+  return Boolean(stream?.isTTY);
+}
+
+function stripAnsi(value) {
+  return value.replace(ANSI_PATTERN, '');
+}
+
+function visibleLength(value) {
+  return stripAnsi(value).length;
+}
 
 class TerminalReporter {
   constructor(options = {}) {
@@ -16,18 +83,26 @@ class TerminalReporter {
     this.progressRequested = options.enabled ?? true;
     this.enabled = this.progressRequested && Boolean(this.stream.isTTY);
     this.finalOnly = this.progressRequested && !this.enabled;
+    this.colorEnabled = options.color ?? supportsColor(this.stream);
     this.maxColumns = options.maxColumns;
     this.maxLines = options.maxLines;
+    this.now = options.now || defaultNow;
     this.tasks = [];
     this.renderedLines = 0;
+    this.startedAt = undefined;
+    this.finishedAt = undefined;
   }
 
   start(tasks) {
+    this.startedAt = this.now();
+    this.finishedAt = undefined;
     this.tasks = tasks.map((task) => ({
       id: task.id,
       label: task.label,
       status: 'pending',
       message: '',
+      startedAt: undefined,
+      durationMs: undefined,
     }));
 
     this.render();
@@ -40,7 +115,12 @@ class TerminalReporter {
       return;
     }
 
+    if (update.status === 'running' && task.startedAt === undefined) {
+      task.startedAt = this.now();
+    }
+
     Object.assign(task, update);
+    this.completeTaskTiming(task);
 
     if (this.finalOnly) {
       return;
@@ -55,6 +135,8 @@ class TerminalReporter {
   }
 
   finish() {
+    this.finishTiming();
+
     if (this.enabled) {
       this.render({ final: true });
       return;
@@ -62,6 +144,31 @@ class TerminalReporter {
 
     if (this.finalOnly && this.tasks.length) {
       this.writeFinalSnapshot();
+      return;
+    }
+
+    if (!this.progressRequested && this.tasks.length) {
+      this.writeFinalReport();
+    }
+  }
+
+  completeTaskTiming(task) {
+    if (!FINAL_STATUSES.has(task.status) || task.durationMs !== undefined) {
+      return;
+    }
+
+    const startedAt = task.startedAt ?? this.startedAt;
+
+    if (startedAt === undefined) {
+      return;
+    }
+
+    task.durationMs = this.now() - startedAt;
+  }
+
+  finishTiming() {
+    if (this.finishedAt === undefined) {
+      this.finishedAt = this.now();
     }
   }
 
@@ -86,7 +193,7 @@ class TerminalReporter {
     const lines = this.tasks.map((task) => this.formatTask(task));
 
     if (options.final) {
-      return lines;
+      return this.fitLines([...lines, ...this.formatReportLines()]);
     }
 
     const maxLines = this.maxRenderLines();
@@ -100,6 +207,13 @@ class TerminalReporter {
 
   writeFinalSnapshot() {
     const lines = this.renderLines({ final: true });
+
+    this.stream.write(`${lines.join('\n')}\n`);
+    this.renderedLines = lines.length;
+  }
+
+  writeFinalReport() {
+    const lines = this.fitLines(this.formatReportLines());
 
     this.stream.write(`${lines.join('\n')}\n`);
     this.renderedLines = lines.length;
@@ -138,7 +252,7 @@ class TerminalReporter {
   }
 
   fitLine(line, maxColumns) {
-    if (line.length <= maxColumns) {
+    if (visibleLength(line) <= maxColumns) {
       return line;
     }
 
@@ -146,7 +260,7 @@ class TerminalReporter {
       return '.'.repeat(maxColumns);
     }
 
-    return `${line.slice(0, maxColumns - 3)}...`;
+    return `${stripAnsi(line).slice(0, maxColumns - 3)}...`;
   }
 
   windowedLines(maxLines) {
@@ -155,7 +269,10 @@ class TerminalReporter {
     }
 
     if (maxLines === 2) {
-      return [this.formatSummary(), `... ${this.tasks.length} tasks total`];
+      return [
+        this.formatSummary(),
+        this.formatInfo('tasks', `${this.tasks.length} total`),
+      ];
     }
 
     const taskCapacity = maxLines - 2;
@@ -169,7 +286,10 @@ class TerminalReporter {
     return [
       this.formatSummary(),
       ...this.tasks.slice(start, end).map((task) => this.formatTask(task)),
-      `... showing ${start + 1}-${end} of ${this.tasks.length} tasks`,
+      this.formatInfo(
+        'showing',
+        `${start + 1}-${end} of ${this.tasks.length} tasks`,
+      ),
     ];
   }
 
@@ -186,13 +306,7 @@ class TerminalReporter {
   }
 
   formatSummary() {
-    const counts = this.tasks.reduce(
-      (result, task) => ({
-        ...result,
-        [task.status]: (result[task.status] || 0) + 1,
-      }),
-      {},
-    );
+    const counts = this.statusCounts();
     const complete = (counts.done || 0) + (counts.skipped || 0);
     const parts = [`${complete}/${this.tasks.length} complete`];
 
@@ -203,21 +317,101 @@ class TerminalReporter {
     }
 
     const prefix = counts.failed
-      ? STATUS_PREFIX.failed
+      ? 'failed'
       : counts.running
-        ? STATUS_PREFIX.running
+        ? 'running'
         : complete === this.tasks.length
-          ? STATUS_PREFIX.done
-          : STATUS_PREFIX.pending;
+          ? 'done'
+          : 'pending';
 
-    return `${prefix} ${parts.join(', ')}`;
+    return this.formatStatusLine(prefix, parts.join(', '));
+  }
+
+  formatReportLines() {
+    const counts = this.statusCounts();
+    const durationMs =
+      this.startedAt === undefined
+        ? undefined
+        : (this.finishedAt ?? this.now()) - this.startedAt;
+    const lines = [
+      this.formatInfo('tasks', this.tasks.length),
+      this.formatInfo('done', counts.done || 0),
+      this.formatInfo('failed', counts.failed || 0),
+      this.formatInfo('skipped', counts.skipped || 0),
+    ];
+
+    for (const status of ['running', 'pending']) {
+      if (counts[status]) {
+        lines.push(this.formatInfo(status, counts[status]));
+      }
+    }
+
+    const duration = formatDurationValue(durationMs);
+
+    if (duration !== undefined) {
+      lines.push(this.formatInfo('duration_ms', duration));
+    }
+
+    return lines;
+  }
+
+  statusCounts() {
+    return this.tasks.reduce((result, task) => {
+      const status = this.statusFor(task);
+
+      return {
+        ...result,
+        [status]: (result[status] || 0) + 1,
+      };
+    }, {});
   }
 
   formatTask(task) {
-    const prefix = STATUS_PREFIX[task.status] || STATUS_PREFIX.pending;
+    const status = this.statusFor(task);
+    const symbol = STATUS_SYMBOL[status];
     const message = task.message ? ` - ${task.message}` : '';
+    const timing = this.formatTaskTiming(task);
 
-    return `${prefix} ${task.label}${message}`;
+    return [
+      this.colorStatus(status, `${symbol} ${task.label}${message}`),
+      timing,
+    ]
+      .filter(Boolean)
+      .join(' ');
+  }
+
+  formatTaskTiming(task) {
+    const duration = formatDurationValue(task.durationMs);
+
+    if (duration === undefined) {
+      return '';
+    }
+
+    return this.color('gray', `(${duration}ms)`);
+  }
+
+  formatStatusLine(status, text) {
+    return this.colorStatus(status, `${STATUS_SYMBOL[status]} ${text}`);
+  }
+
+  formatInfo(label, value) {
+    return this.color('blue', `ℹ ${label} ${value}`);
+  }
+
+  colorStatus(status, value) {
+    return this.color(STATUS_COLOR[status], value);
+  }
+
+  color(colorName, value) {
+    if (!this.colorEnabled || !COLOR_CODE[colorName]) {
+      return value;
+    }
+
+    return `\u001b[${COLOR_CODE[colorName]}m${value}\u001b[39m`;
+  }
+
+  statusFor(task) {
+    return STATUS_SYMBOL[task.status] ? task.status : 'pending';
   }
 }
 

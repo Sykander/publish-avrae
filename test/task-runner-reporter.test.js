@@ -21,6 +21,37 @@ function makeReporter() {
   };
 }
 
+function makeClock(values) {
+  let index = 0;
+
+  return () => values[Math.min(index++, values.length - 1)];
+}
+
+function withColorEnv(env, callback) {
+  const keys = ['FORCE_COLOR', 'NO_COLOR', 'NODE_DISABLE_COLORS'];
+  const original = new Map(keys.map((key) => [key, process.env[key]]));
+
+  for (const key of keys) {
+    delete process.env[key];
+  }
+
+  Object.assign(process.env, env);
+
+  try {
+    callback();
+  } finally {
+    for (const key of keys) {
+      const value = original.get(key);
+
+      if (value === undefined) {
+        delete process.env[key];
+      } else {
+        process.env[key] = value;
+      }
+    }
+  }
+}
+
 test('runTasks reports successful and default task results', async () => {
   const reporter = makeReporter();
   const results = await runTasks(
@@ -229,7 +260,9 @@ test('runTasksInOrder returns ordered results for successful tasks', async () =>
 test('TerminalReporter writes simple lines when progress rendering is disabled', () => {
   const writes = [];
   const reporter = new TerminalReporter({
+    color: false,
     enabled: false,
+    now: makeClock([0, 5, 12, 20]),
     stream: {
       write(chunk) {
         writes.push(chunk);
@@ -243,13 +276,18 @@ test('TerminalReporter writes simple lines when progress rendering is disabled',
   reporter.update('task', { status: 'done', message: 'complete' });
   reporter.finish();
 
-  assert.deepEqual(writes, ['[ok] Task - complete\n']);
+  assert.deepEqual(writes, [
+    '✔ Task - complete (7ms)\n',
+    'ℹ tasks 1\nℹ done 1\nℹ failed 0\nℹ skipped 0\nℹ duration_ms 20\n',
+  ]);
 });
 
 test('TerminalReporter writes one final snapshot without an interactive stream', () => {
   const writes = [];
   const reporter = new TerminalReporter({
+    color: false,
     enabled: true,
+    now: makeClock([0, 2, 8, 10, 15, 21]),
     stream: {
       write(chunk) {
         writes.push(chunk);
@@ -263,6 +301,7 @@ test('TerminalReporter writes one final snapshot without an interactive stream',
   ]);
   reporter.update('gvar:env', { status: 'running' });
   reporter.update('gvar:env', { status: 'done', message: 'updated' });
+  reporter.update('gvar:config', { status: 'running' });
   reporter.update('gvar:config', {
     status: 'skipped',
     message: 'unchanged',
@@ -274,7 +313,16 @@ test('TerminalReporter writes one final snapshot without an interactive stream',
   reporter.finish();
 
   assert.deepEqual(writes, [
-    '[ok] gvar env - updated\n[-] gvar config - unchanged\n',
+    [
+      '✔ gvar env - updated (6ms)',
+      '- gvar config - unchanged (5ms)',
+      'ℹ tasks 2',
+      'ℹ done 1',
+      'ℹ failed 0',
+      'ℹ skipped 1',
+      'ℹ duration_ms 21',
+      '',
+    ].join('\n'),
   ]);
 });
 
@@ -286,23 +334,30 @@ test('TerminalReporter renders and rerenders interactive output', () => {
       writes.push(chunk);
     },
   };
-  const reporter = new TerminalReporter({ stream });
+  const reporter = new TerminalReporter({
+    color: false,
+    now: makeClock([0, 5]),
+    stream,
+  });
 
   reporter.start([{ id: 'task', label: 'Task' }]);
   reporter.update('task', { status: 'mystery' });
-  reporter.finish();
 
   assert.equal(reporter.enabled, true);
   assert.equal(reporter.renderedLines, 1);
-  assert.ok(writes.includes('[ ] Task\n'));
-  assert.ok(writes.includes('[ ] Task\n'));
+  assert.ok(writes.includes('○ Task\n'));
+  assert.ok(writes.includes('○ Task\n'));
   assert.ok(writes.includes('\u001b[1A'));
   assert.ok(writes.includes('\u001b[1G'));
   assert.ok(writes.includes('\u001b[0J'));
   assert.equal(
     reporter.formatTask({ label: 'Other', status: 'failed' }),
-    '[err] Other',
+    '✖ Other',
   );
+
+  reporter.finish();
+
+  assert.equal(reporter.renderedLines, 7);
 });
 
 test('TerminalReporter keeps live output inside the terminal viewport', () => {
@@ -315,7 +370,11 @@ test('TerminalReporter keeps live output inside the terminal viewport', () => {
       writes.push(chunk);
     },
   };
-  const reporter = new TerminalReporter({ stream });
+  const reporter = new TerminalReporter({
+    color: false,
+    now: makeClock([0, 5, 10]),
+    stream,
+  });
   const tasks = Array.from({ length: 8 }, (_, index) => ({
     id: `task-${index}`,
     label: `Task ${index}`,
@@ -329,13 +388,13 @@ test('TerminalReporter keeps live output inside the terminal viewport', () => {
 
   assert.equal(reporter.renderedLines, 4);
   assert.equal(latestProgress.split('\n').filter(Boolean).length, 4);
-  assert.match(latestProgress, /\[>\] 0\/8 complete, 1 running, 7 pending/);
+  assert.match(latestProgress, /▶ 0\/8 complete, 1 running, 7 pending/);
   assert.ok(writes.includes('\u001b[4A'));
 
   reporter.finish();
 
-  assert.equal(reporter.renderedLines, 8);
-  assert.equal(writes.at(-1).split('\n').filter(Boolean).length, 8);
+  assert.equal(reporter.renderedLines, 15);
+  assert.equal(writes.at(-1).split('\n').filter(Boolean).length, 15);
 });
 
 test('TerminalReporter truncates live lines that would wrap', () => {
@@ -348,7 +407,7 @@ test('TerminalReporter truncates live lines that would wrap', () => {
       writes.push(chunk);
     },
   };
-  const reporter = new TerminalReporter({ stream });
+  const reporter = new TerminalReporter({ color: false, stream });
 
   reporter.start([
     {
@@ -357,11 +416,12 @@ test('TerminalReporter truncates live lines that would wrap', () => {
     },
   ]);
 
-  assert.deepEqual(writes, ['[ ] This task...\n']);
+  assert.deepEqual(writes, ['○ This task l...\n']);
 });
 
 test('TerminalReporter covers compact summary and formatting branches', () => {
   const reporter = new TerminalReporter({
+    color: false,
     enabled: false,
     stream: {
       write() {},
@@ -380,20 +440,157 @@ test('TerminalReporter covers compact summary and formatting branches', () => {
     { id: 'other', label: 'Other', status: 'done', message: '' },
   ];
 
-  assert.deepEqual(reporter.windowedLines(1), ['[ok] 3/3 complete']);
+  assert.deepEqual(reporter.windowedLines(1), ['✔ 3/3 complete']);
   assert.deepEqual(reporter.windowedLines(2), [
-    '[ok] 3/3 complete',
-    '... 3 tasks total',
+    '✔ 3/3 complete',
+    'ℹ tasks 3 total',
   ]);
   assert.equal(reporter.focusIndex(1), 2);
 
   reporter.tasks = [
     { id: 'failed', label: 'Failed', status: 'failed', message: '' },
   ];
-  assert.equal(reporter.formatSummary(), '[err] 0/1 complete, 1 failed');
+  assert.equal(reporter.formatSummary(), '✖ 0/1 complete, 1 failed');
 
   reporter.tasks = [
     { id: 'pending', label: 'Pending', status: 'pending', message: '' },
   ];
-  assert.equal(reporter.formatSummary(), '[ ] 0/1 complete, 1 pending');
+  assert.equal(reporter.formatSummary(), '○ 0/1 complete, 1 pending');
+  assert.deepEqual(reporter.formatReportLines(), [
+    'ℹ tasks 1',
+    'ℹ done 0',
+    'ℹ failed 0',
+    'ℹ skipped 0',
+    'ℹ pending 1',
+  ]);
+
+  const liveReport = new TerminalReporter({
+    color: false,
+    now: makeClock([10, 13]),
+    stream: {
+      write() {},
+    },
+  });
+  liveReport.start([{ id: 'task', label: 'Task' }]);
+  assert.equal(liveReport.formatReportLines().at(-1), 'ℹ duration_ms 3');
+
+  const untimedTask = { status: 'done' };
+  reporter.completeTaskTiming(untimedTask);
+  assert.equal(untimedTask.durationMs, undefined);
+
+  reporter.startedAt = 2;
+  reporter.now = () => 7;
+  reporter.completeTaskTiming(untimedTask);
+  assert.equal(untimedTask.durationMs, 5);
+
+  const taskWithStart = { status: 'done', startedAt: 1 };
+  reporter.completeTaskTiming(taskWithStart);
+  assert.equal(taskWithStart.durationMs, 6);
+
+  reporter.completeTaskTiming(untimedTask);
+  assert.equal(untimedTask.durationMs, 5);
+});
+
+test('TerminalReporter colors status and report lines when enabled', () => {
+  const reporter = new TerminalReporter({
+    color: true,
+    enabled: false,
+    stream: {
+      write() {},
+    },
+  });
+  const plain = new TerminalReporter({
+    color: false,
+    enabled: false,
+    stream: {
+      write() {},
+    },
+  });
+
+  assert.equal(
+    reporter.formatTask({ label: 'Done', status: 'done', durationMs: 12.5 }),
+    '\u001b[32m✔ Done\u001b[39m \u001b[90m(12.5ms)\u001b[39m',
+  );
+  assert.equal(
+    reporter.formatInfo('tasks', 1),
+    '\u001b[34mℹ tasks 1\u001b[39m',
+  );
+  assert.equal(
+    plain.formatTask({ label: 'Done', status: 'done', durationMs: 12.5 }),
+    '✔ Done (12.5ms)',
+  );
+});
+
+test('TerminalReporter detects when color is allowed by the stream or environment', () => {
+  withColorEnv({ FORCE_COLOR: '1' }, () => {
+    assert.equal(
+      new TerminalReporter({ stream: { write() {} } }).colorEnabled,
+      true,
+    );
+  });
+  withColorEnv({ FORCE_COLOR: '0' }, () => {
+    assert.equal(
+      new TerminalReporter({ stream: { isTTY: true, write() {} } })
+        .colorEnabled,
+      false,
+    );
+  });
+  withColorEnv({ NO_COLOR: '1' }, () => {
+    assert.equal(
+      new TerminalReporter({ stream: { isTTY: true, write() {} } })
+        .colorEnabled,
+      false,
+    );
+  });
+  withColorEnv({ NODE_DISABLE_COLORS: '1' }, () => {
+    assert.equal(
+      new TerminalReporter({ stream: { isTTY: true, write() {} } })
+        .colorEnabled,
+      false,
+    );
+  });
+  withColorEnv({}, () => {
+    assert.equal(
+      new TerminalReporter({
+        stream: {
+          hasColors() {
+            return true;
+          },
+          write() {},
+        },
+      }).colorEnabled,
+      true,
+    );
+    assert.equal(
+      new TerminalReporter({
+        stream: {
+          getColorDepth() {
+            return 1;
+          },
+          write() {},
+        },
+      }).colorEnabled,
+      false,
+    );
+    assert.equal(
+      new TerminalReporter({
+        stream: {
+          getColorDepth() {
+            return 8;
+          },
+          write() {},
+        },
+      }).colorEnabled,
+      true,
+    );
+    assert.equal(
+      new TerminalReporter({ stream: { isTTY: true, write() {} } })
+        .colorEnabled,
+      true,
+    );
+    assert.equal(
+      new TerminalReporter({ stream: { write() {} } }).colorEnabled,
+      false,
+    );
+  });
 });
