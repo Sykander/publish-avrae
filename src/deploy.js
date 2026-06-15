@@ -1,208 +1,174 @@
-const fs = require("fs");
+const { getAlias } = require('./avrae/get-alias');
+const { getGvar } = require('./avrae/get-gvar');
+const { getSnippet } = require('./avrae/get-snippet');
+const { updateAlias } = require('./avrae/update-alias');
+const { updateDocs } = require('./avrae/update-docs');
+const { updateGvar } = require('./avrae/update-gvar');
+const { updateSnippet } = require('./avrae/update-snippet');
+const { setEnvironmentId } = require('./set-environment-id');
+const {
+  getAssetDocs,
+  normalizeSourceMap,
+  readAssetFile,
+} = require('./source-map');
+const { runTasks } = require('./task-runner');
+const { hydrateWorkshopAssets } = require('./workshop-assets');
 
-const { getWorkshop } = require("./avrae/get-workshop");
-const { getAlias } = require("./avrae/get-alias");
-const { setEnvironmentId } = require("./set-environment-id");
-const { updateAlias } = require("./avrae/update-alias");
-const { getSnippet } = require("./avrae/get-snippet");
-const { updateSnippet } = require("./avrae/update-snippet");
-const { updateGvar } = require("./avrae/update-gvar");
-const { getGvar } = require("./avrae/get-gvar");
-
-function hydrateSourceMapAlias(
-  sourceMap,
-  workshop,
-  sourceMapAlias,
-  workshopAlias,
-) {
-  sourceMapAlias.id = workshopAlias._id;
-
-  Array.isArray(sourceMapAlias.sub_aliases) &&
-    sourceMapAlias.sub_aliases.forEach((sourceMapSubAlias) => {
-      const workshopSubCommand = workshopAlias.subcommands.find(
-        ({ name: subCommandName }) => subCommandName === sourceMapSubAlias.name,
-      );
-
-      if (!workshopSubCommand) {
-        throw new Error(
-          `Alias ${sourceMapAlias.name} sub alias ${sourceMapSubAlias.name} does not exist in the workshop.`,
-        );
-      }
-
-      hydrateSourceMapAlias(
-        sourceMap,
-        workshop,
-        sourceMapSubAlias,
-        workshopSubCommand,
-      );
-    });
+function currentVersion(versions) {
+  return versions.find(({ is_current }) => is_current) || versions[0] || {};
 }
 
-function hydrateSourceMap(sourceMap, workshop) {
-  sourceMap.aliases.forEach((sourceMapAlias) => {
-    const workshopAlias = workshop.aliases.find(
-      ({ name: workshopAliasName }) =>
-        sourceMapAlias.name === workshopAliasName,
-    );
-
-    if (!workshopAlias) {
-      throw new Error(
-        `Alias ${sourceMapAlias.name} does not exist in the workshop.`,
-      );
-    }
-
-    hydrateSourceMapAlias(sourceMap, workshop, sourceMapAlias, workshopAlias);
-  });
-  Array.isArray(sourceMap.snippets) &&
-    sourceMap.snippets.forEach((sourceMapSnippet) => {
-      const workshopSnippet = workshop.snippets.find(
-        ({ name: workshopSnippetName }) =>
-          sourceMapSnippet.name === workshopSnippetName,
-      );
-
-      if (!workshopSnippet) {
-        throw new Error(
-          `Snippet ${sourceMapSnippet.name} does not exist in the workshop.`,
-        );
-      }
-
-      sourceMapSnippet.id = workshopSnippet._id;
-    });
-
-  return { ...sourceMap };
+function nextVersion(versions) {
+  return Math.max(0, ...versions.map(({ version }) => version || 0)) + 1;
 }
 
-function flatMapAliases(aliasesList) {
-  return [
-    ...aliasesList,
-    ...aliasesList.flatMap((alias) => flatMapAliases(alias.sub_aliases || [])),
-  ];
+function withEnvironment(content, sourceMap) {
+  return sourceMap?.workshop?.environment
+    ? setEnvironmentId(content, sourceMap.workshop.environment)
+    : content;
 }
 
-async function deploy(sourceMap) {
-  const tasks = [];
+function workshopAssetPath(asset, parentPath) {
+  return parentPath ? `${parentPath} ${asset.name}` : asset.name;
+}
 
-  if (sourceMap?.workshop?.id) {
-    const workshop = await getWorkshop(sourceMap.workshop.id);
-    const hydratedSourceMap = hydrateSourceMap(sourceMap, workshop);
-
-    
-    if (sourceMap?.workshop?.environment) {
-      console.log(`Updating Environment ID ${sourceMap?.workshop?.environment}`)
-    } else {
-      console.log(`Not changing Environment ID`)
-    }
-
-    tasks.push(
-      ...flatMapAliases(hydratedSourceMap.aliases).map(
-        async (sourceMapAlias) => {
-          const aliasVersions = await getAlias(sourceMapAlias.id);
-          const aliasCurrentVersion =
-            aliasVersions.find(({ is_current }) => is_current) ||
-            aliasVersions[0] ||
-            {};
-          const highestVersion =
-            Math.max(...aliasVersions.map(({ version }) => version)) || 0;
-
-          const rawContents = fs.readFileSync(sourceMapAlias.file).toString();
-
-          const newContents = sourceMap?.workshop?.environment
-            ? setEnvironmentId(rawContents, sourceMap.workshop.environment)
-            : rawContents;
-
-          if (aliasCurrentVersion.content === newContents) {
-            console.log(
-              `${sourceMapAlias.name} alias wasn't updated as its unchanged.`,
-            );
-            return;
-          }
-
-          const newVersionNum =
-            (Number.isFinite(highestVersion) ? highestVersion : 0) + 1;
-
-          const newVersion = {
-            ...aliasCurrentVersion,
-            is_current: true,
-            content: newContents,
-            version: newVersionNum,
-          };
-
-          return updateAlias(sourceMapAlias.id, newVersion).then(() =>
-            console.log(
-              `${sourceMapAlias.name} alias was updated to version ${newVersionNum}`,
-            ),
-          );
-        },
-      ),
-    );
-
-    tasks.push(
-      ...hydratedSourceMap.snippets.map(async (sourceMapSnippet) => {
-        const snippetVersions = await getSnippet(sourceMapSnippet.id);
-        const snippetCurrentVersion =
-          snippetVersions.find(({ is_current }) => is_current) ||
-          snippetVersions[0] ||
-          {};
-        const highestVersion =
-          Math.max(...snippetVersions.map(({ version }) => version)) || 0;
-
-        const rawContents = fs.readFileSync(sourceMapSnippet.file).toString();
-        const newContents = sourceMap?.workshop?.environment
-          ? setEnvironmentId(rawContents, sourceMap.workshop.environment)
-          : rawContents;
-        if (snippetCurrentVersion.content === newContents) {
-          console.log(
-            `${sourceMapSnippet.name} snippet wasn't updated as its unchanged.`,
-          );
-          return;
-        }
-
-        const newVersionNum =
-          (Number.isFinite(highestVersion) ? highestVersion : 0) + 1;
-        const newVersion = {
-          ...snippetCurrentVersion,
-          is_current: true,
-          content: newContents,
-          version: newVersionNum,
-        };
-
-        return updateSnippet(sourceMapSnippet.id, newVersion).then(() =>
-          console.log(
-            `${sourceMapSnippet.name} snippet was updated to version ${newVersionNum}`,
-          ),
-        );
-      }),
-    );
+function labelForWorkshopAsset(type, asset, parentPath) {
+  if (type === 'subalias') {
+    return `subalias ${workshopAssetPath(asset, parentPath)}`;
   }
 
-  tasks.push(
-    ...sourceMap.gvars.map(async (sourceMapGvar) => {
-      const currentGvar = await getGvar(sourceMapGvar.id);
+  return `${type} ${asset.name}`;
+}
 
-      const rawContents = fs.readFileSync(sourceMapGvar.file).toString();
-      const newContents = sourceMap?.workshop?.environment
-        ? setEnvironmentId(rawContents, sourceMap.workshop.environment)
-        : rawContents;
+function buildWorkshopTask(type, asset, sourceMap, options = {}) {
+  const { baseDir = process.cwd(), parentPath = null } = options;
+  const label = labelForWorkshopAsset(type, asset, parentPath);
+  const updateCode = type === 'snippet' ? updateSnippet : updateAlias;
+  const getCode = type === 'snippet' ? getSnippet : getAlias;
+  const docsType = type === 'snippet' ? 'snippet' : 'alias';
+  const assetPath = workshopAssetPath(asset, parentPath);
 
-      if (currentGvar.value === newContents) {
-        console.log(
-          `${sourceMapGvar.name} ${sourceMapGvar.id} gvar wasn't updated as its unchanged.`,
-        );
-        return;
+  return {
+    id: `${type}:${assetPath}`,
+    label,
+    async run() {
+      const versions = await getCode(asset.id);
+      const activeVersion = currentVersion(versions);
+      const rawContents = readAssetFile(asset, baseDir);
+      const newContents = withEnvironment(rawContents, sourceMap);
+      const docs = getAssetDocs(asset, baseDir);
+      const changes = [];
+
+      if (activeVersion.content !== newContents) {
+        const version = nextVersion(versions);
+        await updateCode(asset.id, {
+          ...activeVersion,
+          is_current: true,
+          content: newContents,
+          version,
+        });
+        changes.push(`code v${version}`);
       }
 
-      return updateGvar(sourceMapGvar.id, {
+      if (
+        docs !== undefined &&
+        (asset._workshopAsset?.docs || '') !== (docs || '')
+      ) {
+        await updateDocs(docsType, asset.id, {
+          name: asset.name,
+          docs,
+        });
+        changes.push('docs');
+      }
+
+      if (!changes.length) {
+        return { status: 'skipped', message: 'unchanged' };
+      }
+
+      return { status: 'done', message: `${changes.join(', ')} updated` };
+    },
+  };
+}
+
+function buildGvarTask(sourceMapGvar, sourceMap, options = {}) {
+  const { baseDir = process.cwd() } = options;
+
+  return {
+    id: `gvar:${sourceMapGvar.name}`,
+    label: `gvar ${sourceMapGvar.name}`,
+    async run() {
+      if (!sourceMapGvar.id) {
+        throw new Error(
+          `Gvar ${sourceMapGvar.name} has no id. Run publish-avrae create-assets first.`,
+        );
+      }
+
+      const currentGvar = await getGvar(sourceMapGvar.id);
+      const rawContents = readAssetFile(sourceMapGvar, baseDir);
+      const newContents = withEnvironment(rawContents, sourceMap);
+
+      if (currentGvar.value === newContents) {
+        return { status: 'skipped', message: 'unchanged' };
+      }
+
+      await updateGvar(sourceMapGvar.id, {
         ...currentGvar,
         value: newContents,
-      }).then(() =>
-        console.log(
-          `${sourceMapGvar.name} ${sourceMapGvar.id} gvar was updated.`,
-        ),
-      );
+      });
+
+      return { status: 'done', message: 'updated' };
+    },
+  };
+}
+
+function addAliasTasks(tasks, sourceMapAlias, sourceMap, options = {}) {
+  const { baseDir = process.cwd(), parentPath = null } = options;
+  const type = parentPath ? 'subalias' : 'alias';
+  const currentPath = workshopAssetPath(sourceMapAlias, parentPath);
+
+  tasks.push(
+    buildWorkshopTask(type, sourceMapAlias, sourceMap, {
+      baseDir,
+      parentPath,
     }),
   );
 
-  return Promise.all(tasks);
+  for (const sourceMapSubAlias of sourceMapAlias.sub_aliases || []) {
+    addAliasTasks(tasks, sourceMapSubAlias, sourceMap, {
+      baseDir,
+      parentPath: currentPath,
+    });
+  }
+}
+
+async function deploy(sourceMap, options = {}) {
+  const { baseDir = process.cwd(), createAssets = false, reporter } = options;
+  const normalized = normalizeSourceMap(sourceMap);
+  const hydratedSourceMap = await hydrateWorkshopAssets(normalized, {
+    baseDir,
+    createMissing: createAssets,
+  });
+  const tasks = [];
+
+  if (hydratedSourceMap?.workshop?.id) {
+    for (const sourceMapAlias of hydratedSourceMap.aliases) {
+      addAliasTasks(tasks, sourceMapAlias, hydratedSourceMap, { baseDir });
+    }
+
+    for (const sourceMapSnippet of hydratedSourceMap.snippets) {
+      tasks.push(
+        buildWorkshopTask('snippet', sourceMapSnippet, hydratedSourceMap, {
+          baseDir,
+        }),
+      );
+    }
+  }
+
+  for (const sourceMapGvar of hydratedSourceMap.gvars) {
+    tasks.push(buildGvarTask(sourceMapGvar, hydratedSourceMap, { baseDir }));
+  }
+
+  return runTasks(tasks, { reporter });
 }
 
 module.exports = { deploy };
